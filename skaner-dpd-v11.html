@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="app-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="app-icon.svg">
+  <title>Skaner DPD Ecomm</title>
+</head>
+<body>
+  <p>Ładowanie skanera...</p>
+  <script>
+    fetch('skaner-dpd-v8.html', { cache: 'no-store' })
+      .then(response => {
+        if (!response.ok) throw new Error('Nie można załadować aplikacji.');
+        return response.text();
+      })
+      .then(html => {
+        html = html.replace(
+          '<title>Skaner DPD Ecomm</title>',
+          '<link rel="icon" href="app-icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="app-icon.svg"><title>Skaner DPD Ecomm</title>'
+        );
+        html = html.replace(
+          '</style>',
+          '.brand{display:flex;align-items:center;gap:10px}.app-logo{width:38px;height:38px;border-radius:8px;object-fit:cover;flex:0 0 auto}.stage-icon{width:44px;height:44px;border-radius:10px;object-fit:cover;float:left;margin:0 10px 6px 0}.author-credit{position:fixed;right:10px;bottom:7px;z-index:20;color:#5d675f;background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.06)}body.client-mode{padding-bottom:28px}body.client-mode .author-credit{font-size:11px;right:6px;bottom:5px}body.client-mode .stage-icon{width:38px;height:38px;margin-right:8px}@media(max-width:520px){.app-logo{width:30px;height:30px}.author-credit{font-size:11px}}' +
+          '</style>'
+        );
+        html = html.replace(
+          '<header><h1>Kontrola etykiet DPD Ecomm</h1><div class="actions">',
+          '<header><div class="brand"><img class="app-logo" src="app-icon.svg" alt=""><h1>Kontrola etykiet DPD Ecomm</h1></div><div class="actions">'
+        );
+        html = html.replace(
+          '<div class="stage"><strong>Zeskanuj numer sledzenia DPD</strong>',
+          '<div class="stage"><img class="stage-icon" src="app-icon.svg" alt=""><strong>Zeskanuj numer sledzenia DPD</strong>'
+        );
+        html = html.replace(
+          '</main>',
+          '</main><div class="author-credit">autor: Adam Z.</div>'
+        );
+        html = html.replace(
+          "let ms=type==='OK'?360:type==='DUPLICATE'?1250:type==='NO_ECOMM'?1550:1150;lockScanning(ms);if(type==='OK')okSound();",
+          "let ms=type==='OK'?750:type==='DUPLICATE'?1250:type==='NO_ECOMM'?1550:1150;lockScanning(ms);if(type==='OK'){okSound();speak('ok')}"
+        );
+        html = html.replace("speak('błąd')", "speak('brak w bazie importu')");
+        document.open();
+        document.write(html);
+        document.close();
+      })
+      .catch(error => {
+        document.body.innerHTML = '<p>Błąd ładowania aplikacji: ' + String(error.message || error) + '</p>';
+      });
+  </script>
+</body>
+</html>
