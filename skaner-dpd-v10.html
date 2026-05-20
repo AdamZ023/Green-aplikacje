@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Skaner DPD Ecomm</title>
+</head>
+<body>
+  <p>Ładowanie skanera...</p>
+  <script>
+    fetch('skaner-dpd-v8.html', { cache: 'no-store' })
+      .then(response => {
+        if (!response.ok) throw new Error('Nie można załadować aplikacji.');
+        return response.text();
+      })
+      .then(html => {
+        html = html.replace(
+          "let ms=type==='OK'?360:type==='DUPLICATE'?1250:type==='NO_ECOMM'?1550:1150;lockScanning(ms);if(type==='OK')okSound();",
+          "let ms=type==='OK'?750:type==='DUPLICATE'?1250:type==='NO_ECOMM'?1550:1150;lockScanning(ms);if(type==='OK'){okSound();speak('ok')}"
+        );
+        html = html.replace("speak('błąd')", "speak('brak w bazie importu')");
+        document.open();
+        document.write(html);
+        document.close();
+      })
+      .catch(error => {
+        document.body.innerHTML = '<p>Błąd ładowania aplikacji: ' + String(error.message || error) + '</p>';
+      });
+  </script>
+</body>
+</html>
