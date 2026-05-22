@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WMS</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <a class="qr-launch" href="/scanner" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg" alt="QR do skanera">
+  </a>
+
+  <main class="shell">
+    <section class="topbar">
+      <div>
+        <h1>WMS</h1>
+        <p>Centralny stan magazynowy</p>
+      </div>
+      <input id="apiKey" type="password" placeholder="Klucz API">
+    </section>
+
+    <section class="toolbar">
+      <button id="refresh">Odswiez</button>
+      <a class="button-link" href="/scanner">Skaner</a>
+    </section>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Nazwa</th>
+            <th>Lokalizacja</th>
+            <th>Ilosc</th>
+          </tr>
+        </thead>
+        <tbody id="stockRows"></tbody>
+      </table>
+    </section>
+  </main>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
