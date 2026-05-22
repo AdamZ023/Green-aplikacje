@@ -9,8 +9,9 @@ class WmsError(ValueError):
     pass
 
 
-def get_item_by_sku(db: Session, sku: str) -> Item | None:
-    return db.scalar(select(Item).where(Item.sku == sku))
+def get_item_by_code(db: Session, code: str) -> Item | None:
+    normalized = code.strip()
+    return db.scalar(select(Item).where((Item.sku == normalized) | (Item.barcode == normalized)))
 
 
 def create_item(db: Session, sku: str, name: str, barcode: str | None) -> Item:
@@ -48,16 +49,16 @@ def get_or_create_stock(db: Session, item: Item, location: str) -> Stock:
 
 
 def receive_stock(db: Session, sku: str, location: str, quantity: int, scanner_id: str, operator: str | None) -> Stock:
-    item = get_item_by_sku(db, sku)
+    item = get_item_by_code(db, sku)
     if not item:
-        raise WmsError("Nie znaleziono SKU.")
+        raise WmsError("Nie znaleziono SKU ani kodu EAN.")
 
     stock = get_or_create_stock(db, item, location)
     stock.quantity += quantity
     db.add(
         Operation(
             operation_type="receive",
-            sku=sku,
+            sku=item.sku,
             to_location=location,
             quantity=quantity,
             scanner_id=scanner_id,
@@ -70,9 +71,9 @@ def receive_stock(db: Session, sku: str, location: str, quantity: int, scanner_i
 
 
 def issue_stock(db: Session, sku: str, location: str, quantity: int, scanner_id: str, operator: str | None) -> Stock:
-    item = get_item_by_sku(db, sku)
+    item = get_item_by_code(db, sku)
     if not item:
-        raise WmsError("Nie znaleziono SKU.")
+        raise WmsError("Nie znaleziono SKU ani kodu EAN.")
 
     stock = get_or_create_stock(db, item, location)
     if stock.quantity < quantity:
@@ -82,7 +83,7 @@ def issue_stock(db: Session, sku: str, location: str, quantity: int, scanner_id:
     db.add(
         Operation(
             operation_type="issue",
-            sku=sku,
+            sku=item.sku,
             from_location=location,
             quantity=quantity,
             scanner_id=scanner_id,
@@ -106,9 +107,9 @@ def move_stock(
     if from_location == to_location:
         raise WmsError("Lokalizacja zrodlowa i docelowa sa takie same.")
 
-    item = get_item_by_sku(db, sku)
+    item = get_item_by_code(db, sku)
     if not item:
-        raise WmsError("Nie znaleziono SKU.")
+        raise WmsError("Nie znaleziono SKU ani kodu EAN.")
 
     source = get_or_create_stock(db, item, from_location)
     if source.quantity < quantity:
@@ -120,7 +121,7 @@ def move_stock(
     db.add(
         Operation(
             operation_type="move",
-            sku=sku,
+            sku=item.sku,
             from_location=from_location,
             to_location=to_location,
             quantity=quantity,
