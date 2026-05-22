@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skaner WMS</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="scanner">
+    <section class="topbar compact">
+      <div>
+        <h1>Skaner WMS</h1>
+        <p>Zebra / przegladarka</p>
+      </div>
+      <a class="button-link" href="/">Panel</a>
+    </section>
+
+    <form id="scanForm" class="form">
+      <label>Klucz API<input id="apiKey" type="password" autocomplete="off"></label>
+      <label>ID skanera<input id="scannerId" required value="ZEBRA-01"></label>
+      <label>Operator<input id="operator"></label>
+      <label>SKU / kod<input id="sku" required autofocus></label>
+      <label>Lokalizacja<input id="location" required></label>
+      <label>Ilosc<input id="quantity" type="number" min="1" required value="1"></label>
+
+      <div class="actions">
+        <button data-action="receive" type="submit">Przyjmij</button>
+        <button data-action="issue" type="submit">Wydaj</button>
+      </div>
+    </form>
+
+    <form id="moveForm" class="form">
+      <h2>Przesuniecie</h2>
+      <label>SKU<input id="moveSku" required></label>
+      <label>Z lokalizacji<input id="fromLocation" required></label>
+      <label>Do lokalizacji<input id="toLocation" required></label>
+      <label>Ilosc<input id="moveQuantity" type="number" min="1" required value="1"></label>
+      <button type="submit">Przesun</button>
+    </form>
+
+    <output id="status" class="status"></output>
+  </main>
+  <script src="/static/scanner.js"></script>
+</body>
+</html>
