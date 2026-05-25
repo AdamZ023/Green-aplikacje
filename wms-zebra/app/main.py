@@ -1,4 +1,5 @@
 from io import BytesIO
+import re
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
@@ -24,7 +25,7 @@ from app.schemas import (
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260525-5"
+APP_VERSION = "20260525-6"
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -78,10 +79,17 @@ def health() -> dict[str, str]:
     dependencies=[Depends(require_api_key)],
 )
 def register_scanner(db: Session = Depends(get_db)) -> ScannerRegistrationOut:
-    next_number = (db.query(ScannerDevice).count() or 0) + 1
+    existing_ids = set(db.scalars(select(ScannerDevice.scanner_id)))
+    existing_ids.update(db.scalars(select(Operation.scanner_id).where(Operation.scanner_id.like("ZEBRA-%"))))
+    existing_numbers = []
+    for scanner_id in existing_ids:
+        match = re.fullmatch(r"ZEBRA-(\d+)", scanner_id or "")
+        if match:
+            existing_numbers.append(int(match.group(1)))
+    next_number = (max(existing_numbers) if existing_numbers else 0) + 1
     while True:
         scanner_id = f"ZEBRA-{next_number:02d}"
-        if not db.scalar(select(ScannerDevice).where(ScannerDevice.scanner_id == scanner_id)):
+        if scanner_id not in existing_ids:
             break
         next_number += 1
 
