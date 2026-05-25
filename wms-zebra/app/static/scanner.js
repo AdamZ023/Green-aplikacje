@@ -10,6 +10,7 @@ const receiveQtyValue = document.querySelector("#receiveQtyValue");
 const moveQuantity = document.querySelector("#moveQuantity");
 const scanCapture = document.querySelector("#scanCapture");
 const newScannerIdButton = document.querySelector("#newScannerId");
+const deviceUid = getOrCreateDeviceUid();
 
 let mode = "receive";
 let activeTarget = "receiveSku";
@@ -258,7 +259,14 @@ async function registerScannerId(forceNew) {
   setStatus("Nadawanie ID skanera...", false);
   const response = await fetch("/api/scanners/register", {
     method: "POST",
-    headers: { "X-API-Key": apiKey.value }
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey.value
+    },
+    body: JSON.stringify({
+      device_uid: deviceUid,
+      force_new: forceNew
+    })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -273,6 +281,14 @@ async function registerScannerId(forceNew) {
       : `Nadano ID ${scannerId.value}. Wpisz operatora.`,
     false
   );
+}
+
+function getOrCreateDeviceUid() {
+  const existing = localStorage.getItem("wmsDeviceUid");
+  if (existing) return existing;
+  const generated = `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem("wmsDeviceUid", generated);
+  return generated;
 }
 
 function canWork() {
