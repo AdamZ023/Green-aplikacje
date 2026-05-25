@@ -26,6 +26,7 @@ class StockOut(BaseModel):
     quantity: int
     operator: str | None = None
     scanner_id: str | None = None
+    scan_at: datetime | None = None
 
 
 class ScannerRegistrationOut(BaseModel):
