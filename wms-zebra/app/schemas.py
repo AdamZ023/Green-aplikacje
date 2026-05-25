@@ -25,6 +25,10 @@ class StockOut(BaseModel):
     quantity: int
 
 
+class ScannerRegistrationOut(BaseModel):
+    scanner_id: str
+
+
 class ReceiveRequest(BaseModel):
     sku: str
     location: str
