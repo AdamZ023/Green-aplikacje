@@ -120,12 +120,72 @@ button:hover,
   background: var(--accent-strong);
 }
 
+.hidden {
+  display: none;
+}
+
 .toolbar,
 .actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 14px;
+}
+
+.mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.mode-tab {
+  background: #2f3b48;
+}
+
+.mode-tab.active {
+  background: var(--accent);
+}
+
+.workflow-panel h2 {
+  margin-bottom: 4px;
+}
+
+.scan-target {
+  display: grid;
+  gap: 6px;
+  min-height: 72px;
+  padding: 12px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+  cursor: pointer;
+}
+
+.scan-target.active {
+  border-color: var(--accent);
+  background: #eef8f5;
+}
+
+.scan-target span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.scan-target strong {
+  overflow-wrap: anywhere;
+  font-size: 20px;
+}
+
+.inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inline-actions strong {
+  font-size: 18px;
 }
 
 .table-wrap,
