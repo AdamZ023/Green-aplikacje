@@ -9,6 +9,7 @@ const receiveQtyButton = document.querySelector("#receiveQtyButton");
 const receiveQtyValue = document.querySelector("#receiveQtyValue");
 const moveQuantity = document.querySelector("#moveQuantity");
 const scanCapture = document.querySelector("#scanCapture");
+const newScannerIdButton = document.querySelector("#newScannerId");
 
 let mode = "receive";
 let activeTarget = "receiveSku";
@@ -33,6 +34,7 @@ for (const field of [apiKey, scannerId, operatorName]) {
 
 apiKey.addEventListener("change", ensureScannerId);
 ensureScannerId();
+newScannerIdButton.addEventListener("click", assignNewScannerId);
 
 for (const tab of modeTabs) {
   tab.addEventListener("click", () => setMode(tab.dataset.mode));
@@ -235,6 +237,24 @@ async function send(url, body) {
 
 async function ensureScannerId() {
   if (scannerId.value.trim() || !apiKey.value.trim()) return;
+  await registerScannerId(false);
+}
+
+async function assignNewScannerId() {
+  if (!apiKey.value.trim()) {
+    setStatus("Wpisz klucz API.", true);
+    apiKey.focus();
+    return;
+  }
+  scannerId.value = "";
+  operatorName.value = "";
+  localStorage.removeItem("wmsScannerId");
+  localStorage.removeItem("wmsOperator");
+  await registerScannerId(true);
+  operatorName.focus();
+}
+
+async function registerScannerId(forceNew) {
   setStatus("Nadawanie ID skanera...", false);
   const response = await fetch("/api/scanners/register", {
     method: "POST",
@@ -247,7 +267,12 @@ async function ensureScannerId() {
   }
   scannerId.value = payload.scanner_id;
   saveSettings();
-  setStatus(`Nadano ID ${scannerId.value}. Wpisz operatora.`, false);
+  setStatus(
+    forceNew
+      ? `Nadano nowe ID ${scannerId.value}. Wpisz operatora.`
+      : `Nadano ID ${scannerId.value}. Wpisz operatora.`,
+    false
+  );
 }
 
 function canWork() {
