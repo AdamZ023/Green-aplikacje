@@ -1,5 +1,6 @@
 const apiKeyInput = document.querySelector("#apiKey");
 const rows = document.querySelector("#stockRows");
+const historyRows = document.querySelector("#historyRows");
 const savedKey = localStorage.getItem("wmsApiKey") || "";
 apiKeyInput.value = savedKey;
 
@@ -41,6 +42,50 @@ async function loadStock() {
   `).join("");
 }
 
+async function loadHistory() {
+  if (!historyRows.children.length) {
+    historyRows.innerHTML = "<tr><td colspan=\"10\">Ladowanie...</td></tr>";
+  }
+
+  const headers = { "X-API-Key": apiKeyInput.value };
+  const [operationsResponse, itemsResponse] = await Promise.all([
+    fetch("/api/operations?limit=200", { headers }),
+    fetch("/api/items", { headers })
+  ]);
+
+  if (!operationsResponse.ok || !itemsResponse.ok) {
+    historyRows.innerHTML = "<tr><td colspan=\"10\">Brak dostepu albo blad API.</td></tr>";
+    return;
+  }
+
+  const operations = await operationsResponse.json();
+  const items = await itemsResponse.json();
+  const itemBySku = new Map(items.map((item) => [item.sku, item]));
+
+  if (!operations.length) {
+    historyRows.innerHTML = "<tr><td colspan=\"10\">Brak historii skanow.</td></tr>";
+    return;
+  }
+
+  historyRows.innerHTML = operations.map((operation) => {
+    const item = itemBySku.get(operation.sku) || {};
+    return `
+      <tr>
+        <td>${escapeHtml(formatScanTime(operation.created_at))}</td>
+        <td>${escapeHtml(formatOperation(operation.operation_type))}</td>
+        <td>${escapeHtml(item.barcode || "")}</td>
+        <td>${escapeHtml(operation.sku)}</td>
+        <td>${escapeHtml(item.name || "")}</td>
+        <td>${escapeHtml(operation.from_location || "")}</td>
+        <td>${escapeHtml(operation.to_location || "")}</td>
+        <td>${operation.quantity}</td>
+        <td>${escapeHtml(operation.operator || "")}</td>
+        <td>${escapeHtml(operation.scanner_id || "")}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -73,6 +118,19 @@ function formatScanTime(value) {
   ].join("");
 }
 
+function formatOperation(value) {
+  return {
+    receive: "Przyjecie",
+    issue: "Wydanie",
+    move: "Przesuniecie"
+  }[value] || value;
+}
+
 document.querySelector("#refresh").addEventListener("click", loadStock);
+document.querySelector("#refresh").addEventListener("click", loadHistory);
 loadStock();
-setInterval(loadStock, 3000);
+loadHistory();
+setInterval(() => {
+  loadStock();
+  loadHistory();
+}, 3000);
