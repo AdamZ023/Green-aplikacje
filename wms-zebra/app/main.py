@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -20,12 +20,13 @@ from app.schemas import (
     OperationOut,
     ReceiveRequest,
     ScannerRegistrationOut,
+    ScannerRegistrationRequest,
     StockOut,
 )
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260525-7"
+APP_VERSION = "20260525-8"
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -33,8 +34,17 @@ CACHE_HEADERS = {
 }
 
 Base.metadata.create_all(bind=engine)
-if "scanner_devices" not in inspect(engine).get_table_names():
+inspector = inspect(engine)
+if "scanner_devices" not in inspector.get_table_names():
     ScannerDevice.__table__.create(bind=engine)
+else:
+    scanner_columns = {column["name"] for column in inspector.get_columns("scanner_devices")}
+    if "device_uid" not in scanner_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE scanner_devices ADD COLUMN device_uid VARCHAR(120)"))
+            connection.execute(
+                text("CREATE UNIQUE INDEX IF NOT EXISTS ix_scanner_devices_device_uid ON scanner_devices (device_uid)")
+            )
 
 app = FastAPI(title="WMS Zebra API", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -78,8 +88,21 @@ def health() -> dict[str, str]:
     response_model=ScannerRegistrationOut,
     dependencies=[Depends(require_api_key)],
 )
-def register_scanner(db: Session = Depends(get_db)) -> ScannerRegistrationOut:
-    existing_ids = set(db.scalars(select(ScannerDevice.scanner_id)))
+def register_scanner(
+    payload: ScannerRegistrationRequest | None = None,
+    db: Session = Depends(get_db),
+) -> ScannerRegistrationOut:
+    payload = payload or ScannerRegistrationRequest()
+    device_uid = payload.device_uid.strip() if payload.device_uid else None
+
+    if device_uid and not payload.force_new:
+        existing_device = db.scalar(select(ScannerDevice).where(ScannerDevice.device_uid == device_uid))
+        if existing_device:
+            return ScannerRegistrationOut(scanner_id=existing_device.scanner_id)
+
+    existing_ids = set(
+        db.scalars(select(ScannerDevice.scanner_id).where(ScannerDevice.device_uid.is_not(None)))
+    )
     existing_ids.update(db.scalars(select(Operation.scanner_id).where(Operation.scanner_id.like("ZEBRA-%"))))
     existing_numbers = []
     for scanner_id in existing_ids:
@@ -93,8 +116,16 @@ def register_scanner(db: Session = Depends(get_db)) -> ScannerRegistrationOut:
             break
         next_number += 1
 
-    device = ScannerDevice(scanner_id=scanner_id)
-    db.add(device)
+    existing_device = db.scalar(select(ScannerDevice).where(ScannerDevice.device_uid == device_uid)) if device_uid else None
+    placeholder = db.scalar(select(ScannerDevice).where(ScannerDevice.scanner_id == scanner_id))
+    if placeholder and placeholder.device_uid is None and device_uid:
+        db.delete(placeholder)
+        db.flush()
+
+    if existing_device:
+        existing_device.scanner_id = scanner_id
+    else:
+        db.add(ScannerDevice(scanner_id=scanner_id, device_uid=device_uid))
     db.commit()
     return ScannerRegistrationOut(scanner_id=scanner_id)
 
