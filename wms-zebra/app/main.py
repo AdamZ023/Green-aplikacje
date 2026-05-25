@@ -24,7 +24,7 @@ from app.schemas import (
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260525-4"
+APP_VERSION = "20260525-5"
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -134,6 +134,7 @@ def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
                 quantity=quantity,
                 operator=latest_operation.operator if latest_operation else None,
                 scanner_id=latest_operation.scanner_id if latest_operation else None,
+                scan_at=latest_operation.created_at if latest_operation else None,
             )
         )
     return stock_rows
@@ -153,6 +154,7 @@ def receive(payload: ReceiveRequest, db: Session = Depends(get_db)) -> StockOut:
         quantity=stock.quantity,
         operator=payload.operator,
         scanner_id=payload.scanner_id,
+        scan_at=None,
     )
 
 
@@ -170,6 +172,7 @@ def issue(payload: IssueRequest, db: Session = Depends(get_db)) -> StockOut:
         quantity=stock.quantity,
         operator=payload.operator,
         scanner_id=payload.scanner_id,
+        scan_at=None,
     )
 
 
@@ -196,6 +199,7 @@ def move(payload: MoveRequest, db: Session = Depends(get_db)) -> list[StockOut]:
             quantity=source.quantity,
             operator=payload.operator,
             scanner_id=payload.scanner_id,
+            scan_at=None,
         ),
         StockOut(
             sku=target.item.sku,
@@ -205,6 +209,7 @@ def move(payload: MoveRequest, db: Session = Depends(get_db)) -> list[StockOut]:
             quantity=target.quantity,
             operator=payload.operator,
             scanner_id=payload.scanner_id,
+            scan_at=None,
         ),
     ]
 
