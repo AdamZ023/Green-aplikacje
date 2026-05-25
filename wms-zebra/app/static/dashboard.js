@@ -8,7 +8,10 @@ apiKeyInput.addEventListener("change", () => {
 });
 
 async function loadStock() {
-  rows.innerHTML = "<tr><td colspan=\"4\">Ladowanie...</td></tr>";
+  const hadRows = rows.children.length > 0;
+  if (!hadRows) {
+    rows.innerHTML = "<tr><td colspan=\"4\">Ladowanie...</td></tr>";
+  }
   const response = await fetch("/api/stock", {
     headers: { "X-API-Key": apiKeyInput.value }
   });
@@ -46,3 +49,4 @@ function escapeHtml(value) {
 
 document.querySelector("#refresh").addEventListener("click", loadStock);
 loadStock();
+setInterval(loadStock, 3000);
