@@ -95,12 +95,12 @@ def add_item(payload: ItemCreate, db: Session = Depends(get_db)) -> Item:
 @app.get("/api/stock", response_model=list[StockOut], dependencies=[Depends(require_api_key)])
 def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
     rows = db.execute(
-        select(Item.sku, Item.name, Stock.location, Stock.quantity)
+        select(Item.sku, Item.barcode, Item.name, Stock.location, Stock.quantity)
         .join(Stock, Stock.item_id == Item.id)
         .order_by(Item.sku, Stock.location)
     ).all()
     stock_rows = []
-    for sku, name, location, quantity in rows:
+    for sku, barcode, name, location, quantity in rows:
         latest_operation = db.scalar(
             select(Operation)
             .where(
@@ -116,6 +116,7 @@ def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
         stock_rows.append(
             StockOut(
                 sku=sku,
+                barcode=barcode,
                 name=name,
                 location=location,
                 quantity=quantity,
@@ -134,6 +135,7 @@ def receive(payload: ReceiveRequest, db: Session = Depends(get_db)) -> StockOut:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return StockOut(
         sku=stock.item.sku,
+        barcode=stock.item.barcode,
         name=stock.item.name,
         location=stock.location,
         quantity=stock.quantity,
@@ -150,6 +152,7 @@ def issue(payload: IssueRequest, db: Session = Depends(get_db)) -> StockOut:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return StockOut(
         sku=stock.item.sku,
+        barcode=stock.item.barcode,
         name=stock.item.name,
         location=stock.location,
         quantity=stock.quantity,
@@ -175,6 +178,7 @@ def move(payload: MoveRequest, db: Session = Depends(get_db)) -> list[StockOut]:
     return [
         StockOut(
             sku=source.item.sku,
+            barcode=source.item.barcode,
             name=source.item.name,
             location=source.location,
             quantity=source.quantity,
@@ -183,6 +187,7 @@ def move(payload: MoveRequest, db: Session = Depends(get_db)) -> list[StockOut]:
         ),
         StockOut(
             sku=target.item.sku,
+            barcode=target.item.barcode,
             name=target.item.name,
             location=target.location,
             quantity=target.quantity,
