@@ -146,6 +146,8 @@ async function submitReceive() {
   if (ok) {
     setStatus(`Przyjeto ${receiveQuantity} szt.`, false);
     state.receiveSku = "";
+    receiveQuantity = 1;
+    receiveQtyValue.textContent = "1 szt.";
     setActiveTarget("receiveSku");
     updateDisplays();
   }
