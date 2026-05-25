@@ -20,6 +20,7 @@ class ItemOut(BaseModel):
 
 class StockOut(BaseModel):
     sku: str
+    barcode: str | None = None
     name: str
     location: str
     quantity: int
