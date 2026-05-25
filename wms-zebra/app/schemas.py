@@ -33,6 +33,11 @@ class ScannerRegistrationOut(BaseModel):
     scanner_id: str
 
 
+class ScannerRegistrationRequest(BaseModel):
+    device_uid: str | None = Field(default=None, max_length=120)
+    force_new: bool = False
+
+
 class ReceiveRequest(BaseModel):
     sku: str
     location: str
