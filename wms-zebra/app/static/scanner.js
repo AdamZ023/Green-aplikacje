@@ -23,12 +23,15 @@ const state = {
 };
 
 apiKey.value = localStorage.getItem("wmsApiKey") || "";
-scannerId.value = localStorage.getItem("wmsScannerId") || scannerId.value;
+scannerId.value = localStorage.getItem("wmsScannerId") || "";
 operatorName.value = localStorage.getItem("wmsOperator") || "";
 
 for (const field of [apiKey, scannerId, operatorName]) {
   field.addEventListener("change", saveSettings);
 }
+
+apiKey.addEventListener("change", ensureScannerId);
+ensureScannerId();
 
 for (const tab of modeTabs) {
   tab.addEventListener("click", () => setMode(tab.dataset.mode));
@@ -130,6 +133,7 @@ async function handleScan(value) {
 }
 
 async function submitReceive() {
+  if (!canWork()) return;
   if (!state.receiveSku || !state.receiveLocation) {
     setStatus("Zeskanuj produkt i lokalizacje.", true);
     return;
@@ -154,6 +158,7 @@ async function submitReceive() {
 }
 
 async function submitMove() {
+  if (!canWork()) return;
   const qty = Number(moveQuantity.value);
   if (!state.moveSku || !state.moveFrom || !state.moveTo || !Number.isInteger(qty) || qty < 1) {
     setStatus("Uzupelnij produkt, obie lokalizacje i ilosc.", true);
@@ -193,6 +198,41 @@ async function send(url, body) {
     return false;
   }
 
+  return true;
+}
+
+async function ensureScannerId() {
+  if (scannerId.value.trim() || !apiKey.value.trim()) return;
+  setStatus("Nadawanie ID skanera...", false);
+  const response = await fetch("/api/scanners/register", {
+    method: "POST",
+    headers: { "X-API-Key": apiKey.value }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setStatus(payload.detail || "Nie mozna nadac ID skanera.", true);
+    return;
+  }
+  scannerId.value = payload.scanner_id;
+  saveSettings();
+  setStatus(`Nadano ID ${scannerId.value}. Wpisz operatora.`, false);
+}
+
+function canWork() {
+  if (!apiKey.value.trim()) {
+    setStatus("Wpisz klucz API.", true);
+    return false;
+  }
+  if (!scannerId.value.trim()) {
+    setStatus("Brak ID skanera. Sprawdz klucz API.", true);
+    ensureScannerId();
+    return false;
+  }
+  if (!operatorName.value.trim()) {
+    setStatus("Wpisz operatora przed rozpoczeciem pracy.", true);
+    operatorName.focus();
+    return false;
+  }
   return true;
 }
 
