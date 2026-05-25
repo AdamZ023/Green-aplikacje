@@ -8,6 +8,7 @@ const movePanel = document.querySelector("#movePanel");
 const receiveQtyButton = document.querySelector("#receiveQtyButton");
 const receiveQtyValue = document.querySelector("#receiveQtyValue");
 const moveQuantity = document.querySelector("#moveQuantity");
+const scanCapture = document.querySelector("#scanCapture");
 
 let mode = "receive";
 let activeTarget = "receiveSku";
@@ -41,6 +42,12 @@ for (const target of document.querySelectorAll(".scan-target")) {
   target.addEventListener("click", () => setActiveTarget(target.dataset.target));
 }
 
+scanCapture.addEventListener("input", () => {
+  scanBuffer = scanCapture.value;
+  clearTimeout(scanTimer);
+  scanTimer = setTimeout(flushScan, 120);
+});
+
 receiveQtyButton.addEventListener("click", () => {
   const value = prompt("Ilosc do przyjecia", String(receiveQuantity));
   if (value === null) return;
@@ -59,7 +66,13 @@ document.querySelector("#moveSubmit").addEventListener("click", submitMove);
 
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey || event.altKey || event.metaKey) return;
-  if (event.target instanceof HTMLInputElement && event.target.matches(":focus")) return;
+  if (
+    event.target instanceof HTMLInputElement
+    && event.target !== scanCapture
+    && event.target.matches(":focus")
+  ) {
+    return;
+  }
 
   if (event.key === "Enter") {
     event.preventDefault();
@@ -68,9 +81,18 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (event.key.length !== 1) return;
+  if (event.target === scanCapture) return;
   scanBuffer += event.key;
   clearTimeout(scanTimer);
   scanTimer = setTimeout(flushScan, 120);
+});
+
+document.addEventListener("pointerdown", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) {
+    return;
+  }
+  focusScanCapture();
 });
 
 function saveSettings() {
@@ -95,14 +117,24 @@ function setActiveTarget(target) {
   for (const element of document.querySelectorAll(".scan-target")) {
     element.classList.toggle("active", element.dataset.target === activeTarget);
   }
+  focusScanCapture();
 }
 
 function flushScan() {
   const value = scanBuffer.trim();
   scanBuffer = "";
+  scanCapture.value = "";
   clearTimeout(scanTimer);
   if (!value) return;
   handleScan(value);
+}
+
+function focusScanCapture() {
+  setTimeout(() => {
+    const active = document.activeElement;
+    if (active === apiKey || active === operatorName || active === moveQuantity) return;
+    scanCapture.focus({ preventScroll: true });
+  }, 0);
 }
 
 async function handleScan(value) {
@@ -274,3 +306,4 @@ function setStatus(message, isError) {
 }
 
 updateDisplays();
+focusScanCapture();
