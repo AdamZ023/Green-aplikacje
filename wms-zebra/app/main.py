@@ -24,6 +24,13 @@ from app.schemas import (
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
+APP_VERSION = "20260525-2"
+CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
 Base.metadata.create_all(bind=engine)
 if "scanner_devices" not in inspect(engine).get_table_names():
     ScannerDevice.__table__.create(bind=engine)
@@ -34,25 +41,25 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/", include_in_schema=False)
 def dashboard() -> FileResponse:
-    return FileResponse("app/static/dashboard.html")
+    return FileResponse("app/static/dashboard.html", headers=CACHE_HEADERS)
 
 
 @app.get("/scanner", include_in_schema=False)
 def scanner() -> FileResponse:
-    return FileResponse("app/static/scanner.html")
+    return FileResponse("app/static/scanner.html", headers=CACHE_HEADERS)
 
 
 @app.get("/scanner-qr.svg", include_in_schema=False)
 def scanner_qr(request: Request) -> Response:
     factory = qrcode.image.svg.SvgPathImage
     if settings.wms_public_url:
-        scanner_url = f"{settings.wms_public_url.rstrip('/')}/scanner"
+        scanner_url = f"{settings.wms_public_url.rstrip('/')}/scanner?v={APP_VERSION}"
     else:
-        scanner_url = str(request.url_for("scanner"))
+        scanner_url = f"{request.url_for('scanner')}?v={APP_VERSION}"
     image = qrcode.make(scanner_url, image_factory=factory, box_size=12, border=2)
     buffer = BytesIO()
     image.save(buffer)
-    return Response(content=buffer.getvalue(), media_type="image/svg+xml")
+    return Response(content=buffer.getvalue(), media_type="image/svg+xml", headers=CACHE_HEADERS)
 
 
 @app.get("/health")
