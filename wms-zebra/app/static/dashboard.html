@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260525-5">
+  <link rel="stylesheet" href="/static/styles.css?v=20260525-6">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260525-5" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260525-5" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260525-6" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260525-6" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -22,7 +22,7 @@
 
     <section class="toolbar">
       <button id="refresh">Odswiez</button>
-      <a class="button-link" href="/zebra-v2?v=20260525-5">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260525-6">Skaner</a>
     </section>
 
     <section class="table-wrap">
@@ -42,7 +42,30 @@
         <tbody id="stockRows"></tbody>
       </table>
     </section>
+
+    <section class="history-section">
+      <h2>Historia skanow</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Skan</th>
+              <th>Operacja</th>
+              <th>EAN</th>
+              <th>Indeks</th>
+              <th>Nazwa</th>
+              <th>Z lokalizacji</th>
+              <th>Do lokalizacji</th>
+              <th>Ilosc</th>
+              <th>Operator</th>
+              <th>ID skanera</th>
+            </tr>
+          </thead>
+          <tbody id="historyRows"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
-  <script src="/static/dashboard.js?v=20260525-5"></script>
+  <script src="/static/dashboard.js?v=20260525-6"></script>
 </body>
 </html>
