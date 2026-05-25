@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260525-6">
+  <link rel="stylesheet" href="/static/styles.css?v=20260525-7">
 </head>
 <body>
   <main class="scanner">
@@ -20,6 +20,7 @@
       <label>Klucz API<input id="apiKey" type="password" autocomplete="off"></label>
       <label>ID skanera<input id="scannerId" readonly placeholder="Nadawany automatycznie"></label>
       <label>Operator<input id="operator" required></label>
+      <button id="newScannerId" type="button">Nadaj nowe ID</button>
     </section>
 
     <section class="mode-tabs" aria-label="Tryb pracy">
@@ -80,6 +81,6 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260525-6"></script>
+  <script src="/static/scanner.js?v=20260525-7"></script>
 </body>
 </html>
