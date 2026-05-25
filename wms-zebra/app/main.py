@@ -24,7 +24,7 @@ from app.schemas import (
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260525-3"
+APP_VERSION = "20260525-4"
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
