@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260525-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260525-4">
 </head>
 <body>
   <main class="scanner">
@@ -68,7 +68,18 @@
     </section>
 
     <output id="status" class="status"></output>
+    <input
+      id="scanCapture"
+      class="scan-capture"
+      type="text"
+      inputmode="none"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+      aria-hidden="true"
+      tabindex="-1"
+    >
   </main>
-  <script src="/static/scanner.js?v=20260525-3"></script>
+  <script src="/static/scanner.js?v=20260525-4"></script>
 </body>
 </html>
