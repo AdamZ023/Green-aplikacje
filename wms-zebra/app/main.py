@@ -5,17 +5,28 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Item, Operation, Stock
-from app.schemas import ItemCreate, ItemOut, IssueRequest, MoveRequest, OperationOut, ReceiveRequest, StockOut
+from app.models import Item, Operation, ScannerDevice, Stock
+from app.schemas import (
+    ItemCreate,
+    ItemOut,
+    IssueRequest,
+    MoveRequest,
+    OperationOut,
+    ReceiveRequest,
+    ScannerRegistrationOut,
+    StockOut,
+)
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
 Base.metadata.create_all(bind=engine)
+if "scanner_devices" not in inspect(engine).get_table_names():
+    ScannerDevice.__table__.create(bind=engine)
 
 app = FastAPI(title="WMS Zebra API", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -49,6 +60,25 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post(
+    "/api/scanners/register",
+    response_model=ScannerRegistrationOut,
+    dependencies=[Depends(require_api_key)],
+)
+def register_scanner(db: Session = Depends(get_db)) -> ScannerRegistrationOut:
+    next_number = (db.query(ScannerDevice).count() or 0) + 1
+    while True:
+        scanner_id = f"ZEBRA-{next_number:02d}"
+        if not db.scalar(select(ScannerDevice).where(ScannerDevice.scanner_id == scanner_id)):
+            break
+        next_number += 1
+
+    device = ScannerDevice(scanner_id=scanner_id)
+    db.add(device)
+    db.commit()
+    return ScannerRegistrationOut(scanner_id=scanner_id)
+
+
 @app.get("/api/items", response_model=list[ItemOut], dependencies=[Depends(require_api_key)])
 def list_items(db: Session = Depends(get_db)) -> list[Item]:
     return list(db.scalars(select(Item).order_by(Item.sku)))
@@ -69,7 +99,31 @@ def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
         .join(Stock, Stock.item_id == Item.id)
         .order_by(Item.sku, Stock.location)
     ).all()
-    return [StockOut(sku=sku, name=name, location=location, quantity=quantity) for sku, name, location, quantity in rows]
+    stock_rows = []
+    for sku, name, location, quantity in rows:
+        latest_operation = db.scalar(
+            select(Operation)
+            .where(
+                Operation.sku == sku,
+                (
+                    (Operation.to_location == location)
+                    | (Operation.from_location == location)
+                ),
+            )
+            .order_by(Operation.id.desc())
+            .limit(1)
+        )
+        stock_rows.append(
+            StockOut(
+                sku=sku,
+                name=name,
+                location=location,
+                quantity=quantity,
+                operator=latest_operation.operator if latest_operation else None,
+                scanner_id=latest_operation.scanner_id if latest_operation else None,
+            )
+        )
+    return stock_rows
 
 
 @app.post("/api/stock/receive", response_model=StockOut, dependencies=[Depends(require_api_key)])
@@ -78,7 +132,14 @@ def receive(payload: ReceiveRequest, db: Session = Depends(get_db)) -> StockOut:
         stock = receive_stock(db, payload.sku, payload.location, payload.quantity, payload.scanner_id, payload.operator)
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return StockOut(sku=stock.item.sku, name=stock.item.name, location=stock.location, quantity=stock.quantity)
+    return StockOut(
+        sku=stock.item.sku,
+        name=stock.item.name,
+        location=stock.location,
+        quantity=stock.quantity,
+        operator=payload.operator,
+        scanner_id=payload.scanner_id,
+    )
 
 
 @app.post("/api/stock/issue", response_model=StockOut, dependencies=[Depends(require_api_key)])
@@ -87,7 +148,14 @@ def issue(payload: IssueRequest, db: Session = Depends(get_db)) -> StockOut:
         stock = issue_stock(db, payload.sku, payload.location, payload.quantity, payload.scanner_id, payload.operator)
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return StockOut(sku=stock.item.sku, name=stock.item.name, location=stock.location, quantity=stock.quantity)
+    return StockOut(
+        sku=stock.item.sku,
+        name=stock.item.name,
+        location=stock.location,
+        quantity=stock.quantity,
+        operator=payload.operator,
+        scanner_id=payload.scanner_id,
+    )
 
 
 @app.post("/api/stock/move", response_model=list[StockOut], dependencies=[Depends(require_api_key)])
@@ -105,8 +173,22 @@ def move(payload: MoveRequest, db: Session = Depends(get_db)) -> list[StockOut]:
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [
-        StockOut(sku=source.item.sku, name=source.item.name, location=source.location, quantity=source.quantity),
-        StockOut(sku=target.item.sku, name=target.item.name, location=target.location, quantity=target.quantity),
+        StockOut(
+            sku=source.item.sku,
+            name=source.item.name,
+            location=source.location,
+            quantity=source.quantity,
+            operator=payload.operator,
+            scanner_id=payload.scanner_id,
+        ),
+        StockOut(
+            sku=target.item.sku,
+            name=target.item.name,
+            location=target.location,
+            quantity=target.quantity,
+            operator=payload.operator,
+            scanner_id=payload.scanner_id,
+        ),
     ]
 
 
