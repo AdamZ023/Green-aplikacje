@@ -1,3 +1,5 @@
+from datetime import timezone, datetime
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -7,6 +9,10 @@ from app.models import Item, Operation, Stock
 
 class WmsError(ValueError):
     pass
+
+
+def scan_timestamp() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def get_item_by_code(db: Session, code: str) -> Item | None:
@@ -63,6 +69,7 @@ def receive_stock(db: Session, sku: str, location: str, quantity: int, scanner_i
             quantity=quantity,
             scanner_id=scanner_id,
             operator=operator,
+            created_at=scan_timestamp(),
         )
     )
     db.commit()
@@ -88,6 +95,7 @@ def issue_stock(db: Session, sku: str, location: str, quantity: int, scanner_id:
             quantity=quantity,
             scanner_id=scanner_id,
             operator=operator,
+            created_at=scan_timestamp(),
         )
     )
     db.commit()
@@ -127,6 +135,7 @@ def move_stock(
             quantity=quantity,
             scanner_id=scanner_id,
             operator=operator,
+            created_at=scan_timestamp(),
         )
     )
     db.commit()
