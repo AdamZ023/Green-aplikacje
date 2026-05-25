@@ -10,20 +10,20 @@ apiKeyInput.addEventListener("change", () => {
 async function loadStock() {
   const hadRows = rows.children.length > 0;
   if (!hadRows) {
-    rows.innerHTML = "<tr><td colspan=\"4\">Ladowanie...</td></tr>";
+    rows.innerHTML = "<tr><td colspan=\"6\">Ladowanie...</td></tr>";
   }
   const response = await fetch("/api/stock", {
     headers: { "X-API-Key": apiKeyInput.value }
   });
 
   if (!response.ok) {
-    rows.innerHTML = "<tr><td colspan=\"4\">Brak dostepu albo blad API.</td></tr>";
+    rows.innerHTML = "<tr><td colspan=\"6\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
 
   const stock = await response.json();
   if (!stock.length) {
-    rows.innerHTML = "<tr><td colspan=\"4\">Brak stanow.</td></tr>";
+    rows.innerHTML = "<tr><td colspan=\"6\">Brak stanow.</td></tr>";
     return;
   }
 
@@ -33,6 +33,8 @@ async function loadStock() {
       <td>${escapeHtml(item.name)}</td>
       <td>${escapeHtml(item.location)}</td>
       <td>${item.quantity}</td>
+      <td>${escapeHtml(item.operator || "")}</td>
+      <td>${escapeHtml(item.scanner_id || "")}</td>
     </tr>
   `).join("");
 }
