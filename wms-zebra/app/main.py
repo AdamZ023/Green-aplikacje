@@ -26,7 +26,7 @@ from app.schemas import (
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260525-8"
+APP_VERSION = "20260526-1"
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -68,10 +68,11 @@ def zebra_v2() -> FileResponse:
 @app.get("/scanner-qr.svg", include_in_schema=False)
 def scanner_qr(request: Request) -> Response:
     factory = qrcode.image.svg.SvgPathImage
+    api_key_param = f"&key={settings.wms_api_key}"
     if settings.wms_public_url:
-        scanner_url = f"{settings.wms_public_url.rstrip('/')}/zebra-v2?v={APP_VERSION}"
+        scanner_url = f"{settings.wms_public_url.rstrip('/')}/zebra-v2?v={APP_VERSION}{api_key_param}"
     else:
-        scanner_url = f"{request.url_for('zebra_v2')}?v={APP_VERSION}"
+        scanner_url = f"{request.url_for('zebra_v2')}?v={APP_VERSION}{api_key_param}"
     image = qrcode.make(scanner_url, image_factory=factory, box_size=12, border=2)
     buffer = BytesIO()
     image.save(buffer)
