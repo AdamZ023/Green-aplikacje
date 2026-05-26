@@ -169,6 +169,7 @@ async function login() {
 function showLogin() {
   hideWorkflows();
   loginView.classList.remove("hidden");
+  operatorName.focus();
   setStatus(scannerId.value ? `Skaner ${scannerId.value}. Wpisz operatora.` : "Nadawanie ID skanera...", false);
 }
 
@@ -183,6 +184,7 @@ function showOperationChoice() {
 
 function openReceive() {
   if (!canWork()) return;
+  resetReceive(false);
   hideWorkflows();
   mode = "receive";
   receivePanel.classList.remove("hidden");
@@ -192,6 +194,7 @@ function openReceive() {
 
 function openMove() {
   if (!canWork()) return;
+  resetMove(false);
   hideWorkflows();
   mode = "move";
   movePanel.classList.remove("hidden");
