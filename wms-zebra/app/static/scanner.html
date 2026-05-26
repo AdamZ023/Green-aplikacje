@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260526-5">
+  <link rel="stylesheet" href="/static/styles.css?v=20260526-6">
 </head>
 <body class="scanner-body">
   <main class="scanner">
@@ -40,6 +40,7 @@
 
     <section id="receivePanel" class="form workflow-panel hidden">
       <h2>Przyjecie</h2>
+      <output id="receiveResult" class="operation-result hidden"></output>
       <div class="scan-target active" data-target="receiveSku">
         <span>SKU / kod</span>
         <strong id="receiveSkuValue">Zeskanuj produkt</strong>
@@ -56,11 +57,11 @@
         <button id="receiveReset" type="button">Wyczysc</button>
         <button class="secondary backToOperations" type="button">Wroc</button>
       </div>
-      <output id="receiveResult" class="operation-result hidden"></output>
     </section>
 
     <section id="movePanel" class="form workflow-panel hidden">
       <h2>Przesuniecie</h2>
+      <output id="moveResult" class="operation-result hidden"></output>
       <div class="scan-target active" data-target="moveSku">
         <span>SKU / kod</span>
         <strong id="moveSkuValue">Zeskanuj produkt</strong>
@@ -79,7 +80,6 @@
         <button id="moveReset" type="button">Wyczysc</button>
         <button class="secondary backToOperations" type="button">Wroc</button>
       </div>
-      <output id="moveResult" class="operation-result hidden"></output>
     </section>
 
     <output id="status" class="status"></output>
@@ -95,6 +95,6 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260526-5"></script>
+  <script src="/static/scanner.js?v=20260526-6"></script>
 </body>
 </html>
