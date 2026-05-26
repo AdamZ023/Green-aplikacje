@@ -17,6 +17,8 @@ const scanCapture = document.querySelector("#scanCapture");
 const newScannerIdButton = document.querySelector("#newScannerId");
 const sessionScannerId = document.querySelector("#sessionScannerId");
 const sessionOperator = document.querySelector("#sessionOperator");
+const receiveResult = document.querySelector("#receiveResult");
+const moveResult = document.querySelector("#moveResult");
 const deviceUid = getOrCreateDeviceUid();
 
 let mode = null;
@@ -193,6 +195,7 @@ function showOperationChoice() {
 function openReceive() {
   if (!canWork()) return;
   resetReceive(false);
+  clearResult(receiveResult);
   hideWorkflows();
   mode = "receive";
   receivePanel.classList.remove("hidden");
@@ -203,6 +206,7 @@ function openReceive() {
 function openMove() {
   if (!canWork()) return;
   resetMove(false);
+  clearResult(moveResult);
   hideWorkflows();
   mode = "move";
   movePanel.classList.remove("hidden");
@@ -248,6 +252,7 @@ async function handleScan(value) {
 
   if (mode === "receive") {
     if (activeTarget === "receiveSku") {
+      clearResult(receiveResult);
       setActiveTarget("receiveLocation");
       setStatus("Zeskanuj lokalizacje.", false);
       return;
@@ -259,6 +264,7 @@ async function handleScan(value) {
   }
 
   if (activeTarget === "moveSku") {
+    clearResult(moveResult);
     setActiveTarget("moveFrom");
     setStatus("Zeskanuj lokalizacje zrodlowa.", false);
   } else if (activeTarget === "moveFrom") {
@@ -273,18 +279,21 @@ async function submitReceive() {
   if (!canWork()) return;
   if (!state.receiveSku || !state.receiveLocation) {
     setStatus("Zeskanuj produkt i lokalizacje.", true);
+    setResult(receiveResult, "Nie wykonano przyjecia: zeskanuj produkt i lokalizacje.", true);
     return;
   }
 
-  const ok = await send("/api/stock/receive", {
+  const result = await send("/api/stock/receive", {
     sku: state.receiveSku,
     location: state.receiveLocation,
     quantity: receiveQuantity,
     scanner_id: scannerId.value.trim(),
     operator: operatorName.value.trim() || null
-  });
+  }, receiveResult);
 
-  if (ok) {
+  if (result.ok) {
+    const productName = result.payload.name || result.payload.sku || state.receiveSku;
+    setResult(receiveResult, `OK: przyjeto ${receiveQuantity} szt. produktu ${productName} do ${state.receiveLocation}.`, false);
     setStatus(`Przyjeto ${receiveQuantity} szt.`, false);
     state.receiveSku = "";
     receiveQuantity = 1;
@@ -299,27 +308,33 @@ async function submitMove() {
   const qty = Number(moveQuantity.value);
   if (!state.moveSku || !state.moveFrom || !state.moveTo || !Number.isInteger(qty) || qty < 1) {
     setStatus("Uzupelnij produkt, obie lokalizacje i ilosc.", true);
+    setResult(moveResult, "Nie wykonano przesuniecia: uzupelnij produkt, obie lokalizacje i ilosc.", true);
     return;
   }
 
-  const ok = await send("/api/stock/move", {
+  const result = await send("/api/stock/move", {
     sku: state.moveSku,
     from_location: state.moveFrom,
     to_location: state.moveTo,
     quantity: qty,
     scanner_id: scannerId.value.trim(),
     operator: operatorName.value.trim() || null
-  });
+  }, moveResult);
 
-  if (ok) {
+  if (result.ok) {
+    const movedRow = Array.isArray(result.payload) ? result.payload[1] || result.payload[0] : null;
+    const productName = movedRow?.name || movedRow?.sku || state.moveSku;
+    const successMessage = `OK: przesunieto ${qty} szt. produktu ${productName} z ${state.moveFrom} do ${state.moveTo}.`;
     setStatus(`Przesunieto ${qty} szt.`, false);
     resetMove(false);
+    setResult(moveResult, successMessage, false);
   }
 }
 
-async function send(url, body) {
+async function send(url, body, resultBox = null) {
   saveSettings();
   setStatus("Wysylanie...", false);
+  if (resultBox) setResult(resultBox, "Wysylanie operacji...", false);
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -331,11 +346,13 @@ async function send(url, body) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    setStatus(payload.detail || "Blad operacji.", true);
-    return false;
+    const message = payload.detail || "Blad operacji.";
+    setStatus(message, true);
+    if (resultBox) setResult(resultBox, `Nie wykonano operacji: ${message}`, true);
+    return { ok: false, payload };
   }
 
-  return true;
+  return { ok: true, payload };
 }
 
 async function ensureScannerId() {
@@ -413,6 +430,7 @@ function resetReceive(showMessage = true) {
   state.receiveLocation = "";
   receiveQuantity = 1;
   receiveQtyValue.textContent = "1 szt.";
+  clearResult(receiveResult);
   setActiveTarget("receiveSku");
   updateDisplays();
   if (showMessage) setStatus("Wyczyszczono przyjecie.", false);
@@ -423,6 +441,7 @@ function resetMove(showMessage = true) {
   state.moveFrom = "";
   state.moveTo = "";
   moveQuantity.value = "1";
+  clearResult(moveResult);
   setActiveTarget("moveSku");
   updateDisplays();
   if (showMessage) setStatus("Wyczyszczono przesuniecie.", false);
@@ -443,6 +462,20 @@ function setText(selector, value) {
 function setStatus(message, isError) {
   statusBox.textContent = message;
   statusBox.classList.toggle("error", isError);
+}
+
+function setResult(element, message, isError) {
+  if (!element) return;
+  element.textContent = message;
+  element.classList.remove("hidden");
+  element.classList.toggle("error", isError);
+}
+
+function clearResult(element) {
+  if (!element) return;
+  element.textContent = "";
+  element.classList.add("hidden");
+  element.classList.remove("error");
 }
 
 updateDisplays();
