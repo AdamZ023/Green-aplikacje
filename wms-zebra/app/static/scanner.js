@@ -34,10 +34,11 @@ const state = {
 
 const params = new URLSearchParams(window.location.search);
 const urlApiKey = params.get("key") || params.get("api_key") || "";
+const loginSessionId = params.get("session") || "";
 
 apiKey.value = urlApiKey || localStorage.getItem("wmsApiKey") || "";
-scannerId.value = localStorage.getItem("wmsScannerId") || "";
-operatorName.value = localStorage.getItem("wmsOperator") || "";
+scannerId.value = loginSessionId ? "" : localStorage.getItem("wmsScannerId") || "";
+operatorName.value = loginSessionId ? "" : localStorage.getItem("wmsOperator") || "";
 
 for (const field of [apiKey, scannerId, operatorName]) {
   field.addEventListener("change", saveSettings);
@@ -122,6 +123,13 @@ bootstrap();
 async function bootstrap() {
   if (urlApiKey) {
     localStorage.setItem("wmsApiKey", urlApiKey);
+  }
+  if (loginSessionId) {
+    localStorage.setItem("wmsLoginSession", loginSessionId);
+    localStorage.removeItem("wmsScannerId");
+    localStorage.removeItem("wmsOperator");
+    scannerId.value = "";
+    operatorName.value = "";
   }
 
   if (!apiKey.value.trim()) {
@@ -358,6 +366,7 @@ async function registerScannerId(forceNew) {
     },
     body: JSON.stringify({
       device_uid: deviceUid,
+      session_id: loginSessionId || localStorage.getItem("wmsLoginSession") || null,
       force_new: forceNew
     })
   });
