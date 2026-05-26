@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260526-4">
+  <link rel="stylesheet" href="/static/styles.css?v=20260526-5">
 </head>
 <body class="scanner-body">
   <main class="scanner">
@@ -56,6 +56,7 @@
         <button id="receiveReset" type="button">Wyczysc</button>
         <button class="secondary backToOperations" type="button">Wroc</button>
       </div>
+      <output id="receiveResult" class="operation-result hidden"></output>
     </section>
 
     <section id="movePanel" class="form workflow-panel hidden">
@@ -78,6 +79,7 @@
         <button id="moveReset" type="button">Wyczysc</button>
         <button class="secondary backToOperations" type="button">Wroc</button>
       </div>
+      <output id="moveResult" class="operation-result hidden"></output>
     </section>
 
     <output id="status" class="status"></output>
@@ -93,7 +95,6 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260526-4"></script>
+  <script src="/static/scanner.js?v=20260526-5"></script>
 </body>
 </html>
-
