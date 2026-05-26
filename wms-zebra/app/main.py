@@ -1,5 +1,6 @@
 from io import BytesIO
 import re
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
@@ -7,11 +8,12 @@ from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
 from sqlalchemy import inspect, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Item, Operation, ScannerDevice, Stock
+from app.models import Item, Operation, ScannerDevice, ScannerLoginSession, Stock
 from app.schemas import (
     ItemCreate,
     ItemOut,
@@ -26,7 +28,7 @@ from app.schemas import (
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260526-3"
+APP_VERSION = "20260526-4"
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -68,7 +70,8 @@ def zebra_v2() -> FileResponse:
 @app.get("/scanner-qr.svg", include_in_schema=False)
 def scanner_qr(request: Request) -> Response:
     factory = qrcode.image.svg.SvgPathImage
-    api_key_param = f"&key={settings.wms_api_key}"
+    session_id = uuid4().hex
+    api_key_param = f"&key={settings.wms_api_key}&session={session_id}"
     if settings.wms_public_url:
         scanner_url = f"{settings.wms_public_url.rstrip('/')}/zebra-v2?v={APP_VERSION}{api_key_param}"
     else:
@@ -103,6 +106,43 @@ def register_scanner(
 ) -> ScannerRegistrationOut:
     payload = payload or ScannerRegistrationRequest()
     device_uid = payload.device_uid.strip() if payload.device_uid else None
+    session_id = payload.session_id.strip() if payload.session_id else None
+
+    if session_id and device_uid:
+        existing_session = db.scalar(
+            select(ScannerLoginSession).where(
+                ScannerLoginSession.session_id == session_id,
+                ScannerLoginSession.device_uid == device_uid,
+            )
+        )
+        if not payload.force_new:
+            if existing_session:
+                return ScannerRegistrationOut(scanner_id=existing_session.scanner_id)
+        elif existing_session:
+            db.delete(existing_session)
+            db.commit()
+
+        for _ in range(20):
+            session_ids = set(
+                db.scalars(
+                    select(ScannerLoginSession.scanner_id).where(ScannerLoginSession.session_id == session_id)
+                )
+            )
+            next_number = 1
+            while True:
+                scanner_id = f"ZEBRA-{next_number:02d}"
+                if scanner_id not in session_ids:
+                    break
+                next_number += 1
+
+            db.add(ScannerLoginSession(session_id=session_id, device_uid=device_uid, scanner_id=scanner_id))
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                continue
+            return ScannerRegistrationOut(scanner_id=scanner_id)
+        raise HTTPException(status_code=409, detail="Nie mozna nadac ID skanera. Sprobuj ponownie.")
 
     if device_uid and not payload.force_new:
         existing_device = db.scalar(select(ScannerDevice).where(ScannerDevice.device_uid == device_uid))
