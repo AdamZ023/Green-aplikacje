@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260525-8">
+  <link rel="stylesheet" href="/static/styles.css?v=20260526-1">
 </head>
 <body>
   <main class="scanner">
@@ -16,19 +16,29 @@
       <a class="button-link" href="/">Panel</a>
     </section>
 
-    <section class="form">
-      <label>Klucz API<input id="apiKey" type="password" autocomplete="off"></label>
+    <section id="loginView" class="form view-panel">
+      <h2>Logowanie</h2>
+      <label class="hidden">Klucz API<input id="apiKey" type="password" autocomplete="off"></label>
       <label>ID skanera<input id="scannerId" readonly placeholder="Nadawany automatycznie"></label>
-      <label>Operator<input id="operator" required></label>
-      <button id="newScannerId" type="button">Nadaj nowe ID</button>
+      <label>Operator<input id="operator" required autocomplete="off"></label>
+      <button id="loginButton" type="button">Rozpocznij prace</button>
+      <button id="newScannerId" class="secondary" type="button">Nadaj nowe ID</button>
     </section>
 
-    <section class="mode-tabs" aria-label="Tryb pracy">
-      <button class="mode-tab active" data-mode="receive" type="button">Przyjecie</button>
-      <button class="mode-tab" data-mode="move" type="button">Przesuniecie</button>
+    <section id="operationView" class="form view-panel hidden">
+      <h2>Wybierz operacje</h2>
+      <div class="scanner-summary">
+        <strong id="sessionScannerId"></strong>
+        <span id="sessionOperator"></span>
+      </div>
+      <div class="operation-grid">
+        <button id="chooseReceive" type="button">Przyjecie</button>
+        <button id="chooseMove" type="button">Przesuniecie</button>
+      </div>
+      <button id="changeOperator" class="secondary" type="button">Zmien operatora</button>
     </section>
 
-    <section id="receivePanel" class="form workflow-panel">
+    <section id="receivePanel" class="form workflow-panel hidden">
       <h2>Przyjecie</h2>
       <div class="scan-target active" data-target="receiveSku">
         <span>SKU / kod</span>
@@ -44,6 +54,7 @@
       </div>
       <div class="actions">
         <button id="receiveReset" type="button">Wyczysc</button>
+        <button class="secondary backToOperations" type="button">Wroc</button>
       </div>
     </section>
 
@@ -65,6 +76,7 @@
       <div class="actions">
         <button id="moveSubmit" type="button">Przesun</button>
         <button id="moveReset" type="button">Wyczysc</button>
+        <button class="secondary backToOperations" type="button">Wroc</button>
       </div>
     </section>
 
@@ -81,6 +93,6 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260525-8"></script>
+  <script src="/static/scanner.js?v=20260526-1"></script>
 </body>
 </html>
