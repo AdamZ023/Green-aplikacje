@@ -131,7 +131,7 @@ button.secondary:hover,
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .toolbar,
@@ -346,6 +346,10 @@ body.scanner-body {
   margin-bottom: 0;
   padding: 12px;
   overflow: hidden;
+}
+
+.scanner .hidden {
+  display: none !important;
 }
 
 .scanner .view-panel,
