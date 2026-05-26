@@ -115,9 +115,19 @@ button,
   cursor: pointer;
 }
 
+button.secondary,
+.button-link.secondary {
+  background: #2f3b48;
+}
+
 button:hover,
 .button-link:hover {
   background: var(--accent-strong);
+}
+
+button.secondary:hover,
+.button-link.secondary:hover {
+  background: #202a34;
 }
 
 .hidden {
@@ -132,11 +142,22 @@ button:hover,
   margin-bottom: 14px;
 }
 
+.operation-grid,
 .mode-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-bottom: 14px;
+}
+
+.operation-grid {
+  margin-bottom: 0;
+}
+
+.operation-grid button {
+  min-height: 96px;
+  font-size: 22px;
+  font-weight: 700;
 }
 
 .mode-tab {
@@ -149,6 +170,27 @@ button:hover,
 
 .workflow-panel h2 {
   margin-bottom: 4px;
+}
+
+.view-panel h2 {
+  margin-bottom: 2px;
+}
+
+.scanner-summary {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafb;
+}
+
+.scanner-summary strong {
+  font-size: 20px;
+}
+
+.scanner-summary span {
+  color: var(--muted);
 }
 
 .scan-target {
