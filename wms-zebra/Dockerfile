@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ARG APP_BUILD_VERSION=20260526-4
+ARG APP_BUILD_VERSION=20260526-5
 
 WORKDIR /app
 
@@ -14,4 +14,3 @@ COPY start.sh ./start.sh
 RUN chmod +x ./start.sh
 
 CMD ["./start.sh"]
-
