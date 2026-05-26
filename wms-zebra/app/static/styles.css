@@ -306,6 +306,104 @@ label input {
   pointer-events: none;
 }
 
+body.scanner-body {
+  overflow: hidden;
+}
+
+.scanner {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
+  width: min(560px, calc(100% - 16px));
+  height: 100dvh;
+  min-height: 100vh;
+  padding: 8px 0;
+  overflow: hidden;
+}
+
+.scanner-topbar {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.scanner-topbar h1 {
+  font-size: 22px;
+}
+
+.scanner-topbar p {
+  display: none;
+}
+
+.scanner-topbar .button-link {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.scanner .form {
+  align-self: stretch;
+  min-height: 0;
+  margin-bottom: 0;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.scanner .view-panel,
+.scanner .workflow-panel {
+  grid-row: 2;
+  align-content: start;
+}
+
+.scanner h2 {
+  font-size: 20px;
+  margin-bottom: 2px;
+}
+
+.scanner input,
+.scanner button,
+.scanner .button-link {
+  min-height: 42px;
+}
+
+.scanner label {
+  gap: 4px;
+}
+
+.scanner label input {
+  font-size: 18px;
+  min-height: 42px;
+}
+
+.scanner .scan-target {
+  min-height: 66px;
+  padding: 10px;
+}
+
+.scanner .scan-target strong {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.scanner .operation-grid {
+  grid-template-columns: 1fr;
+}
+
+.scanner .operation-grid button {
+  min-height: 92px;
+}
+
+.scanner .actions {
+  margin-bottom: 0;
+}
+
+.scanner .status {
+  grid-row: 3;
+  min-height: 42px;
+  max-height: 58px;
+  padding: 9px 10px;
+  overflow: hidden;
+}
+
 @media (max-width: 640px) {
   .qr-launch {
     position: static;
