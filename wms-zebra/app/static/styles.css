@@ -298,13 +298,14 @@ label input {
 
 .operation-result {
   display: block;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid #b7d8c8;
   border-radius: 8px;
   background: #edf8f2;
   color: #11543a;
   font-weight: 700;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .operation-result.error {
@@ -361,8 +362,9 @@ body.scanner-body {
   align-self: stretch;
   min-height: 0;
   margin-bottom: 0;
-  padding: 12px;
-  overflow: hidden;
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .scanner .hidden {
@@ -376,14 +378,14 @@ body.scanner-body {
 }
 
 .scanner h2 {
-  font-size: 20px;
-  margin-bottom: 2px;
+  font-size: 19px;
+  margin-bottom: 0;
 }
 
 .scanner input,
 .scanner button,
 .scanner .button-link {
-  min-height: 42px;
+  min-height: 38px;
 }
 
 .scanner label {
@@ -392,17 +394,25 @@ body.scanner-body {
 
 .scanner label input {
   font-size: 18px;
-  min-height: 42px;
+  min-height: 38px;
 }
 
 .scanner .scan-target {
-  min-height: 66px;
-  padding: 10px;
+  min-height: 58px;
+  padding: 8px 10px;
+  gap: 3px;
 }
 
 .scanner .scan-target strong {
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.15;
+}
+
+.scanner .operation-result {
+  padding: 8px 10px;
+  max-height: 74px;
+  overflow: auto;
+  font-size: 15px;
 }
 
 .scanner .operation-grid {
