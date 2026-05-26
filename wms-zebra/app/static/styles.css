@@ -296,6 +296,23 @@ label input {
   color: var(--danger);
 }
 
+.operation-result {
+  display: block;
+  padding: 12px;
+  border: 1px solid #b7d8c8;
+  border-radius: 8px;
+  background: #edf8f2;
+  color: #11543a;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.operation-result.error {
+  border-color: #e2b8b8;
+  background: #fff0f0;
+  color: var(--danger);
+}
+
 .scan-capture {
   position: fixed;
   left: -1000px;
