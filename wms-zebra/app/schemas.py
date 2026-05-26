@@ -35,6 +35,7 @@ class ScannerRegistrationOut(BaseModel):
 
 class ScannerRegistrationRequest(BaseModel):
     device_uid: str | None = Field(default=None, max_length=120)
+    session_id: str | None = Field(default=None, max_length=120)
     force_new: bool = False
 
 
