@@ -83,6 +83,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/health/db")
+def health_db() -> dict[str, str]:
+    return {
+        "database": engine.url.get_backend_name(),
+        "driver": engine.url.get_driver_name(),
+    }
+
+
 @app.post(
     "/api/scanners/register",
     response_model=ScannerRegistrationOut,
