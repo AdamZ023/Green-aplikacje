@@ -2,17 +2,24 @@ const apiKey = document.querySelector("#apiKey");
 const scannerId = document.querySelector("#scannerId");
 const operatorName = document.querySelector("#operator");
 const statusBox = document.querySelector("#status");
-const modeTabs = [...document.querySelectorAll(".mode-tab")];
+const loginView = document.querySelector("#loginView");
+const operationView = document.querySelector("#operationView");
 const receivePanel = document.querySelector("#receivePanel");
 const movePanel = document.querySelector("#movePanel");
+const loginButton = document.querySelector("#loginButton");
+const chooseReceive = document.querySelector("#chooseReceive");
+const chooseMove = document.querySelector("#chooseMove");
+const changeOperator = document.querySelector("#changeOperator");
 const receiveQtyButton = document.querySelector("#receiveQtyButton");
 const receiveQtyValue = document.querySelector("#receiveQtyValue");
 const moveQuantity = document.querySelector("#moveQuantity");
 const scanCapture = document.querySelector("#scanCapture");
 const newScannerIdButton = document.querySelector("#newScannerId");
+const sessionScannerId = document.querySelector("#sessionScannerId");
+const sessionOperator = document.querySelector("#sessionOperator");
 const deviceUid = getOrCreateDeviceUid();
 
-let mode = "receive";
+let mode = null;
 let activeTarget = "receiveSku";
 let scanBuffer = "";
 let scanTimer = null;
@@ -25,7 +32,10 @@ const state = {
   moveTo: ""
 };
 
-apiKey.value = localStorage.getItem("wmsApiKey") || "";
+const params = new URLSearchParams(window.location.search);
+const urlApiKey = params.get("key") || params.get("api_key") || "";
+
+apiKey.value = urlApiKey || localStorage.getItem("wmsApiKey") || "";
 scannerId.value = localStorage.getItem("wmsScannerId") || "";
 operatorName.value = localStorage.getItem("wmsOperator") || "";
 
@@ -33,12 +43,21 @@ for (const field of [apiKey, scannerId, operatorName]) {
   field.addEventListener("change", saveSettings);
 }
 
-apiKey.addEventListener("change", ensureScannerId);
-ensureScannerId();
+operatorName.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    login();
+  }
+});
+
+loginButton.addEventListener("click", login);
+chooseReceive.addEventListener("click", openReceive);
+chooseMove.addEventListener("click", openMove);
+changeOperator.addEventListener("click", showLogin);
 newScannerIdButton.addEventListener("click", assignNewScannerId);
 
-for (const tab of modeTabs) {
-  tab.addEventListener("click", () => setMode(tab.dataset.mode));
+for (const button of document.querySelectorAll(".backToOperations")) {
+  button.addEventListener("click", showOperationChoice);
 }
 
 for (const target of document.querySelectorAll(".scan-target")) {
@@ -98,21 +117,93 @@ document.addEventListener("pointerdown", (event) => {
   focusScanCapture();
 });
 
+bootstrap();
+
+async function bootstrap() {
+  if (urlApiKey) {
+    localStorage.setItem("wmsApiKey", urlApiKey);
+  }
+
+  if (!apiKey.value.trim()) {
+    setStatus("Zeskanuj QR z panelu WMS.", true);
+    showLogin();
+    return;
+  }
+
+  await ensureScannerId();
+  if (operatorName.value.trim() && scannerId.value.trim()) {
+    showOperationChoice();
+  } else {
+    showLogin();
+    operatorName.focus();
+  }
+}
+
 function saveSettings() {
   localStorage.setItem("wmsApiKey", apiKey.value);
   localStorage.setItem("wmsScannerId", scannerId.value);
   localStorage.setItem("wmsOperator", operatorName.value);
 }
 
-function setMode(nextMode) {
-  mode = nextMode;
-  receivePanel.classList.toggle("hidden", mode !== "receive");
-  movePanel.classList.toggle("hidden", mode !== "move");
-  for (const tab of modeTabs) {
-    tab.classList.toggle("active", tab.dataset.mode === mode);
+async function login() {
+  if (!apiKey.value.trim()) {
+    setStatus("Zeskanuj QR z panelu WMS.", true);
+    return;
   }
-  setActiveTarget(mode === "receive" ? "receiveSku" : "moveSku");
-  setStatus(mode === "receive" ? "Tryb przyjecia." : "Tryb przesuniecia.", false);
+  if (!scannerId.value.trim()) {
+    await ensureScannerId();
+  }
+  if (!scannerId.value.trim()) {
+    setStatus("Nie mozna nadac ID skanera.", true);
+    return;
+  }
+  if (!operatorName.value.trim()) {
+    setStatus("Wpisz operatora.", true);
+    operatorName.focus();
+    return;
+  }
+  saveSettings();
+  showOperationChoice();
+}
+
+function showLogin() {
+  hideWorkflows();
+  loginView.classList.remove("hidden");
+  setStatus(scannerId.value ? `Skaner ${scannerId.value}. Wpisz operatora.` : "Nadawanie ID skanera...", false);
+}
+
+function showOperationChoice() {
+  hideWorkflows();
+  loginView.classList.add("hidden");
+  operationView.classList.remove("hidden");
+  sessionScannerId.textContent = scannerId.value;
+  sessionOperator.textContent = operatorName.value;
+  setStatus("Wybierz operacje.", false);
+}
+
+function openReceive() {
+  if (!canWork()) return;
+  hideWorkflows();
+  mode = "receive";
+  receivePanel.classList.remove("hidden");
+  setActiveTarget("receiveSku");
+  setStatus("Zeskanuj produkt.", false);
+}
+
+function openMove() {
+  if (!canWork()) return;
+  hideWorkflows();
+  mode = "move";
+  movePanel.classList.remove("hidden");
+  setActiveTarget("moveSku");
+  setStatus("Zeskanuj produkt.", false);
+}
+
+function hideWorkflows() {
+  operationView.classList.add("hidden");
+  receivePanel.classList.add("hidden");
+  movePanel.classList.add("hidden");
+  mode = null;
 }
 
 function setActiveTarget(target) {
@@ -128,7 +219,7 @@ function flushScan() {
   scanBuffer = "";
   scanCapture.value = "";
   clearTimeout(scanTimer);
-  if (!value) return;
+  if (!value || !mode) return;
   handleScan(value);
 }
 
@@ -243,8 +334,7 @@ async function ensureScannerId() {
 
 async function assignNewScannerId() {
   if (!apiKey.value.trim()) {
-    setStatus("Wpisz klucz API.", true);
-    apiKey.focus();
+    setStatus("Zeskanuj QR z panelu WMS.", true);
     return;
   }
   scannerId.value = "";
@@ -275,12 +365,7 @@ async function registerScannerId(forceNew) {
   }
   scannerId.value = payload.scanner_id;
   saveSettings();
-  setStatus(
-    forceNew
-      ? `Nadano nowe ID ${scannerId.value}. Wpisz operatora.`
-      : `Nadano ID ${scannerId.value}. Wpisz operatora.`,
-    false
-  );
+  setStatus(`Nadano ID ${scannerId.value}. Wpisz operatora.`, false);
 }
 
 function getOrCreateDeviceUid() {
@@ -293,16 +378,18 @@ function getOrCreateDeviceUid() {
 
 function canWork() {
   if (!apiKey.value.trim()) {
-    setStatus("Wpisz klucz API.", true);
+    setStatus("Zeskanuj QR z panelu WMS.", true);
+    showLogin();
     return false;
   }
   if (!scannerId.value.trim()) {
-    setStatus("Brak ID skanera. Sprawdz klucz API.", true);
+    setStatus("Brak ID skanera.", true);
     ensureScannerId();
     return false;
   }
   if (!operatorName.value.trim()) {
     setStatus("Wpisz operatora przed rozpoczeciem pracy.", true);
+    showLogin();
     operatorName.focus();
     return false;
   }
@@ -347,4 +434,3 @@ function setStatus(message, isError) {
 }
 
 updateDisplays();
-focusScanCapture();
