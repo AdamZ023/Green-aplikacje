@@ -1,0 +1,133 @@
+POSTGRESQL NA RENDERZE - WMS ZEBRA
+==================================
+
+Cel:
+Zastapic tymczasowa baze SQLite trwala baza PostgreSQL na Renderze.
+Po tej zmianie stany i historia skanow nie powinny znikac po restarcie ani deployu.
+
+
+1. UTWORZ BAZE POSTGRESQL W RENDERZE
+------------------------------------
+
+1) Wejdz w Render Dashboard.
+2) Kliknij New.
+3) Wybierz PostgreSQL.
+4) Ustaw:
+
+   Name:
+   wms-zebra-db
+
+   Region:
+   ten sam region co usluga wms-zebra, najlepiej Frankfurt / EU jesli jest dostepny
+
+   Plan:
+   najtanszy dostepny plan wystarczy do testow
+
+5) Kliknij Create Database.
+6) Poczekaj, az baza bedzie miala status Available.
+
+
+2. SKOPIUJ ADRES BAZY
+---------------------
+
+1) Wejdz w utworzona baze PostgreSQL.
+2) Otworz zakladke Info albo Connections.
+3) Skopiuj wartosc:
+
+   Internal Database URL
+
+Uzyj Internal Database URL, bo aplikacja WMS dziala na Renderze i laczy sie
+z baza wewnatrz Rendera.
+
+Adres moze wygladac podobnie do:
+
+postgresql://user:haslo@host:5432/dbname
+
+Nie wklejaj tego adresu w czat ani publicznie, bo zawiera haslo do bazy.
+
+
+3. PODLACZ BAZE DO USLUGI WMS
+-----------------------------
+
+1) Wejdz w usluge:
+
+   wms-zebra
+
+2) Po lewej kliknij Environment.
+3) Dodaj albo zmien zmienna:
+
+   DATABASE_URL = Internal Database URL z bazy PostgreSQL
+
+4) Sprawdz tez, czy sa ustawione:
+
+   WMS_API_KEY = dev-local-key
+   WMS_PUBLIC_URL = https://wms-zebra.onrender.com
+
+5) Kliknij Save Changes.
+6) Render powinien wykonac redeploy.
+
+
+4. SPRAWDZ CZY APLIKACJA UZYWA POSTGRESQL
+-----------------------------------------
+
+Po redeployu otworz w przegladarce:
+
+https://wms-zebra.onrender.com/health/db
+
+Prawidlowy wynik powinien zawierac:
+
+"database":"postgresql"
+
+Jesli widzisz:
+
+"database":"sqlite"
+
+to znaczy, ze zmienna DATABASE_URL nie jest ustawiona albo Render jeszcze nie
+przeladowal uslugi.
+
+
+5. WPROWADZ DANE DO NOWEJ BAZY
+------------------------------
+
+Nowa baza PostgreSQL bedzie pusta. Po podpieciu trzeba ponownie wgrac Excela.
+
+Na komputerze uruchom PowerShell:
+
+cd "C:\Users\User738\Desktop\WMS - baza dnaych + skanery zebra"
+
+.\.venv\Scripts\python.exe tools\import_xlsx_to_api.py baza_danych_test.xlsx --base-url https://wms-zebra.onrender.com --api-key dev-local-key --location MAGAZYN
+
+Po imporcie w panelu:
+
+https://wms-zebra.onrender.com
+
+powinny pojawic sie produkty i stany.
+
+
+6. TEST
+-------
+
+Na dashboardzie wpisz klucz:
+
+dev-local-key
+
+Na Zebrze otworz:
+
+https://wms-zebra.onrender.com/zebra-v2?v=20260525-8
+
+Zeskanuj jeden z kodow testowych:
+
+5903245689755
+5903245671439
+
+Skan powinien pojawic sie w historii i nie powinien zniknac po restarcie uslugi.
+
+
+7. WAZNE
+--------
+
+SQLite byl tylko tymczasowy. Render moze kasowac plik SQLite przy deployu,
+restarcie albo uspieniu darmowej uslugi.
+
+PostgreSQL jest osobna trwala baza, dlatego jest wymagany dla pracy wielu
+skanerow Zebra.
