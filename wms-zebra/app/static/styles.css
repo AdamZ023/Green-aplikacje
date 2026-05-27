@@ -142,6 +142,10 @@ button.secondary:hover,
   margin-bottom: 14px;
 }
 
+.dashboard-view h2 {
+  margin-bottom: 10px;
+}
+
 .operation-grid,
 .mode-tabs {
   display: grid;
