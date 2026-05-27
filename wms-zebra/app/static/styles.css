@@ -50,6 +50,13 @@ body {
   padding: 18px 0 28px;
 }
 
+.shell {
+  width: calc(100% - 172px);
+  max-width: none;
+  margin-left: 150px;
+  margin-right: 22px;
+}
+
 .scanner {
   max-width: 560px;
 }
@@ -246,6 +253,117 @@ button.secondary:hover,
   overflow: auto;
 }
 
+.dashboard-view .table-wrap {
+  overflow-x: hidden;
+}
+
+.dashboard-view table {
+  table-layout: fixed;
+}
+
+.dashboard-view th,
+.dashboard-view td {
+  overflow-wrap: anywhere;
+  padding: 8px 7px;
+  vertical-align: top;
+}
+
+.dashboard-view th {
+  font-size: 13px;
+}
+
+.dashboard-view td {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.dashboard-view th:nth-child(1),
+.dashboard-view td:nth-child(1) {
+  width: 10%;
+}
+
+.dashboard-view th:nth-child(2),
+.dashboard-view td:nth-child(2) {
+  width: 18%;
+}
+
+.dashboard-view th:nth-child(3),
+.dashboard-view td:nth-child(3) {
+  width: 24%;
+}
+
+.dashboard-view th:nth-child(4),
+.dashboard-view td:nth-child(4) {
+  width: 12%;
+}
+
+.dashboard-view th:nth-child(5),
+.dashboard-view td:nth-child(5) {
+  width: 6%;
+}
+
+.dashboard-view th:nth-child(6),
+.dashboard-view td:nth-child(6) {
+  width: 12%;
+}
+
+.dashboard-view th:nth-child(7),
+.dashboard-view td:nth-child(7) {
+  width: 8%;
+}
+
+.dashboard-view th:nth-child(8),
+.dashboard-view td:nth-child(8) {
+  width: 10%;
+}
+
+#operationHistoryView th:nth-child(1),
+#operationHistoryView td:nth-child(1) {
+  width: 11%;
+}
+
+#operationHistoryView th:nth-child(2),
+#operationHistoryView td:nth-child(2) {
+  width: 9%;
+}
+
+#operationHistoryView th:nth-child(3),
+#operationHistoryView td:nth-child(3) {
+  width: 10%;
+}
+
+#operationHistoryView th:nth-child(4),
+#operationHistoryView td:nth-child(4) {
+  width: 17%;
+}
+
+#operationHistoryView th:nth-child(5),
+#operationHistoryView td:nth-child(5) {
+  width: 20%;
+}
+
+#operationHistoryView th:nth-child(6),
+#operationHistoryView td:nth-child(6),
+#operationHistoryView th:nth-child(7),
+#operationHistoryView td:nth-child(7) {
+  width: 10%;
+}
+
+#operationHistoryView th:nth-child(8),
+#operationHistoryView td:nth-child(8) {
+  width: 5%;
+}
+
+#operationHistoryView th:nth-child(9),
+#operationHistoryView td:nth-child(9) {
+  width: 8%;
+}
+
+#operationHistoryView th:nth-child(10),
+#operationHistoryView td:nth-child(10) {
+  width: 10%;
+}
+
 .history-section {
   margin-top: 18px;
 }
@@ -268,6 +386,12 @@ td {
 
 th {
   background: #eef2f5;
+  font-weight: 700;
+}
+
+.total-row td {
+  background: #e8f3ef;
+  border-top: 2px solid var(--accent);
   font-weight: 700;
 }
 
@@ -448,6 +572,11 @@ body.scanner-body {
   .topbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .shell {
+    width: min(1080px, calc(100% - 24px));
+    margin: 0 auto;
   }
 
   .topbar input {
