@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
-from sqlalchemy import inspect, select, text
+from sqlalchemy import func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,11 +24,13 @@ from app.schemas import (
     ScannerRegistrationOut,
     ScannerRegistrationRequest,
     StockOut,
+    WarehouseStockOut,
 )
 from app.security import require_api_key
 from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260526-6"
+APP_VERSION = "20260527-1"
+WAREHOUSE_CODE = "9201D"
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -228,6 +230,42 @@ def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
     return stock_rows
 
 
+@app.get("/api/warehouse-stock", response_model=list[WarehouseStockOut], dependencies=[Depends(require_api_key)])
+def list_warehouse_stock(db: Session = Depends(get_db)) -> list[WarehouseStockOut]:
+    rows = db.execute(
+        select(
+            Item.sku,
+            Item.barcode,
+            Item.name,
+            func.coalesce(func.sum(Stock.quantity), 0),
+        )
+        .outerjoin(Stock, Stock.item_id == Item.id)
+        .group_by(Item.sku, Item.barcode, Item.name)
+        .order_by(Item.sku)
+    ).all()
+    stock_rows = []
+    for sku, barcode, name, quantity in rows:
+        latest_operation = db.scalar(
+            select(Operation)
+            .where(Operation.sku == sku)
+            .order_by(Operation.id.desc())
+            .limit(1)
+        )
+        stock_rows.append(
+            WarehouseStockOut(
+                sku=sku,
+                barcode=barcode,
+                name=name,
+                warehouse=WAREHOUSE_CODE,
+                quantity=quantity,
+                operator=latest_operation.operator if latest_operation else None,
+                scanner_id=latest_operation.scanner_id if latest_operation else None,
+                scan_at=latest_operation.created_at if latest_operation else None,
+            )
+        )
+    return stock_rows
+
+
 @app.post("/api/stock/receive", response_model=StockOut, dependencies=[Depends(require_api_key)])
 def receive(payload: ReceiveRequest, db: Session = Depends(get_db)) -> StockOut:
     try:
@@ -303,5 +341,12 @@ def move(payload: MoveRequest, db: Session = Depends(get_db)) -> list[StockOut]:
 
 
 @app.get("/api/operations", response_model=list[OperationOut], dependencies=[Depends(require_api_key)])
-def operations(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)) -> list[Operation]:
-    return list(db.scalars(select(Operation).order_by(Operation.id.desc()).limit(limit)))
+def operations(
+    limit: int = Query(default=100, ge=1, le=500),
+    operation_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> list[Operation]:
+    query = select(Operation)
+    if operation_type:
+        query = query.where(Operation.operation_type == operation_type)
+    return list(db.scalars(query.order_by(Operation.id.desc()).limit(limit)))
