@@ -50,6 +50,10 @@
           '</main><div class="author-credit">autor: Adam Z.</div>'
         );
         html = html.replace(
+          "const IS_CLIENT=new URLSearchParams(location.search).has('join');if(IS_CLIENT)document.body.classList.add('client-mode');const STORAGE_KEY='dpd-ecomm-online-scans-v8',MAP_KEY='dpd-ecomm-online-map-v8';const state={scans:loadJson(STORAGE_KEY,[]),trackingMap:loadJson(MAP_KEY,{})};",
+          "const IS_CLIENT=new URLSearchParams(location.search).has('join');const STORAGE_KEY='dpd-ecomm-online-scans-v8',MAP_KEY='dpd-ecomm-online-map-v8';if(IS_CLIENT){document.body.classList.add('client-mode');localStorage.removeItem(STORAGE_KEY);localStorage.removeItem(MAP_KEY)}const state={scans:loadJson(STORAGE_KEY,[]),trackingMap:loadJson(MAP_KEY,{})};"
+        );
+        html = html.replace(
           "let ms=type==='OK'?360:type==='DUPLICATE'?1250:type==='NO_ECOMM'?1550:1150;lockScanning(ms);if(type==='OK')okSound();",
           "let ms=type==='OK'?750:type==='DUPLICATE'?1250:type==='NO_ECOMM'?1550:1150;lockScanning(ms);if(type==='OK'){okSound();speak('ok')}"
         );
@@ -67,6 +71,10 @@
         html = html.replace(
           "el('saveMapBtn').onclick=()=>{const parsed=parseTrackingMap(mappingInput.value);state.trackingMap=parsed.map;saveMap();render();setStatus('Import zapisany','Wczytano pozycje Verto: '+parsed.count+'. Ecomm: '+parsed.ecomm+'. Poza Ecomm: '+parsed.notEcomm+'.',parsed.count?'ok':'warn')};",
           "el('saveMapBtn').onclick=()=>{const parsed=parseTrackingMap(mappingInput.value);if(!parsed.count||!parsed.ecomm){setStatus('Import wygląda nieprawidłowo','Nie znaleziono pozycji Ecomm. Sprawdź kolumny z Verto. Tracking DPD powinien zaczynać się od 10 i kończyć U.','bad');const h=document.getElementById('syncHealth');if(h)h.textContent='Import odrzucony: 0 pozycji Ecomm albo zły format trackingów.';return}if((state.scans.length||sync.peer||sync.conn)&&!confirm('Zmiana importu unieważni obecny QR i powinna rozpocząć nową sesję. Kontynuować?'))return;state.trackingMap=parsed.map;saveMap();render();setStatus('Import zapisany','Wczytano pozycje Verto: '+parsed.count+'. Ecomm: '+parsed.ecomm+'. Poza Ecomm: '+parsed.notEcomm+'.','ok');const h=document.getElementById('syncHealth');if(h)h.textContent='Import zapisany. Teraz kliknij Utwórz sesję dla Zebry.'};"
+        );
+        html = html.replace(
+          "sync.conn.on('open',()=>{setSession('Polaczono z sesja '+code,'ok');sync.conn.send({type:'state',payload:payload()})})",
+          "sync.conn.on('open',()=>{setSession('Połączono z sesją '+code,'ok');setStatus('Pobieram bazę z komputera','Nie skanuj jeszcze. Czekam na synchronizację importu i skanów.','warn')})"
         );
         document.open();
         document.write(html);
