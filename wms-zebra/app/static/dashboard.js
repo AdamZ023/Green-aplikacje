@@ -1,34 +1,104 @@
 const apiKeyInput = document.querySelector("#apiKey");
-const rows = document.querySelector("#stockRows");
+const warehouseRows = document.querySelector("#warehouseRows");
+const logisticsRows = document.querySelector("#logisticsRows");
 const historyRows = document.querySelector("#historyRows");
+const views = {
+  warehouse: document.querySelector("#warehouseView"),
+  logistics: document.querySelector("#logisticsView"),
+  history: document.querySelector("#operationHistoryView")
+};
+const buttons = {
+  warehouse: document.querySelector("#warehouseViewButton"),
+  logistics: document.querySelector("#logisticsViewButton"),
+  history: document.querySelector("#historyViewButton")
+};
 const savedKey = localStorage.getItem("wmsApiKey") || "";
+let activeView = localStorage.getItem("wmsDashboardView") || "warehouse";
+
 apiKeyInput.value = savedKey;
 
 apiKeyInput.addEventListener("change", () => {
   localStorage.setItem("wmsApiKey", apiKeyInput.value);
+  loadAll();
 });
 
-async function loadStock() {
-  const hadRows = rows.children.length > 0;
+buttons.warehouse.addEventListener("click", () => showView("warehouse"));
+buttons.logistics.addEventListener("click", () => showView("logistics"));
+buttons.history.addEventListener("click", () => showView("history"));
+document.querySelector("#refresh").addEventListener("click", loadAll);
+
+function showView(name) {
+  activeView = name;
+  localStorage.setItem("wmsDashboardView", name);
+  for (const [viewName, view] of Object.entries(views)) {
+    view.classList.toggle("hidden", viewName !== name);
+    buttons[viewName].classList.toggle("secondary", viewName !== name);
+  }
+}
+
+async function loadAll() {
+  await Promise.all([
+    loadWarehouseStock(),
+    loadLogisticsStock(),
+    loadOperationHistory()
+  ]);
+}
+
+async function loadWarehouseStock() {
+  const hadRows = warehouseRows.children.length > 0;
   if (!hadRows) {
-    rows.innerHTML = "<tr><td colspan=\"8\">Ladowanie...</td></tr>";
+    warehouseRows.innerHTML = "<tr><td colspan=\"8\">Ladowanie...</td></tr>";
+  }
+  const response = await fetch("/api/warehouse-stock", {
+    headers: { "X-API-Key": apiKeyInput.value }
+  });
+
+  if (!response.ok) {
+    warehouseRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
+    return;
+  }
+
+  const stock = await response.json();
+  if (!stock.length) {
+    warehouseRows.innerHTML = "<tr><td colspan=\"8\">Brak stanow.</td></tr>";
+    return;
+  }
+
+  warehouseRows.innerHTML = stock.map((item) => `
+    <tr>
+      <td>${escapeHtml(item.barcode || "")}</td>
+      <td>${escapeHtml(item.sku)}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(item.warehouse)}</td>
+      <td>${item.quantity}</td>
+      <td>${escapeHtml(formatScanTime(item.scan_at))}</td>
+      <td>${escapeHtml(item.operator || "")}</td>
+      <td>${escapeHtml(item.scanner_id || "")}</td>
+    </tr>
+  `).join("");
+}
+
+async function loadLogisticsStock() {
+  const hadRows = logisticsRows.children.length > 0;
+  if (!hadRows) {
+    logisticsRows.innerHTML = "<tr><td colspan=\"8\">Ladowanie...</td></tr>";
   }
   const response = await fetch("/api/stock", {
     headers: { "X-API-Key": apiKeyInput.value }
   });
 
   if (!response.ok) {
-    rows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
+    logisticsRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
 
   const stock = await response.json();
   if (!stock.length) {
-    rows.innerHTML = "<tr><td colspan=\"8\">Brak stanow.</td></tr>";
+    logisticsRows.innerHTML = "<tr><td colspan=\"8\">Brak stanow.</td></tr>";
     return;
   }
 
-  rows.innerHTML = stock.map((item) => `
+  logisticsRows.innerHTML = stock.map((item) => `
     <tr>
       <td>${escapeHtml(item.barcode || "")}</td>
       <td>${escapeHtml(item.sku)}</td>
@@ -42,14 +112,14 @@ async function loadStock() {
   `).join("");
 }
 
-async function loadHistory() {
+async function loadOperationHistory() {
   if (!historyRows.children.length) {
     historyRows.innerHTML = "<tr><td colspan=\"10\">Ladowanie...</td></tr>";
   }
 
   const headers = { "X-API-Key": apiKeyInput.value };
   const [operationsResponse, itemsResponse] = await Promise.all([
-    fetch("/api/operations?limit=200", { headers }),
+    fetch("/api/operations?limit=200&operation_type=move", { headers }),
     fetch("/api/items", { headers })
   ]);
 
@@ -63,7 +133,7 @@ async function loadHistory() {
   const itemBySku = new Map(items.map((item) => [item.sku, item]));
 
   if (!operations.length) {
-    historyRows.innerHTML = "<tr><td colspan=\"10\">Brak historii skanow.</td></tr>";
+    historyRows.innerHTML = "<tr><td colspan=\"10\">Brak historii przesuniec.</td></tr>";
     return;
   }
 
@@ -126,11 +196,9 @@ function formatOperation(value) {
   }[value] || value;
 }
 
-document.querySelector("#refresh").addEventListener("click", loadStock);
-document.querySelector("#refresh").addEventListener("click", loadHistory);
-loadStock();
-loadHistory();
-setInterval(() => {
-  loadStock();
-  loadHistory();
-}, 3000);
+if (!views[activeView]) {
+  activeView = "warehouse";
+}
+showView(activeView);
+loadAll();
+setInterval(loadAll, 3000);
