@@ -29,6 +29,17 @@ class StockOut(BaseModel):
     scan_at: datetime | None = None
 
 
+class WarehouseStockOut(BaseModel):
+    sku: str
+    barcode: str | None = None
+    name: str
+    warehouse: str
+    quantity: int
+    operator: str | None = None
+    scanner_id: str | None = None
+    scan_at: datetime | None = None
+
+
 class ScannerRegistrationOut(BaseModel):
     scanner_id: str
 
