@@ -64,6 +64,7 @@ async function loadWarehouseStock() {
     return;
   }
 
+  const total = stock.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   warehouseRows.innerHTML = stock.map((item) => `
     <tr>
       <td>${escapeHtml(item.barcode || "")}</td>
@@ -75,7 +76,7 @@ async function loadWarehouseStock() {
       <td>${escapeHtml(item.operator || "")}</td>
       <td>${escapeHtml(item.scanner_id || "")}</td>
     </tr>
-  `).join("");
+  `).join("") + totalRow(4, total, 3);
 }
 
 async function loadLogisticsStock() {
@@ -98,6 +99,7 @@ async function loadLogisticsStock() {
     return;
   }
 
+  const total = stock.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   logisticsRows.innerHTML = stock.map((item) => `
     <tr>
       <td>${escapeHtml(item.barcode || "")}</td>
@@ -109,7 +111,7 @@ async function loadLogisticsStock() {
       <td>${escapeHtml(item.operator || "")}</td>
       <td>${escapeHtml(item.scanner_id || "")}</td>
     </tr>
-  `).join("");
+  `).join("") + totalRow(4, total, 3);
 }
 
 async function loadOperationHistory() {
@@ -164,6 +166,16 @@ function escapeHtml(value) {
     "\"": "&quot;",
     "'": "&#39;"
   })[char]);
+}
+
+function totalRow(labelColspan, total, trailingColspan) {
+  return `
+    <tr class="total-row">
+      <td colspan="${labelColspan}">Total</td>
+      <td>${total}</td>
+      <td colspan="${trailingColspan}"></td>
+    </tr>
+  `;
 }
 
 function formatScanTime(value) {
