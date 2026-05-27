@@ -22,7 +22,7 @@
         );
         html = html.replace(
           '</style>',
-          '.brand{display:flex;align-items:center;gap:10px}.app-logo{width:38px;height:38px;border-radius:8px;object-fit:cover;flex:0 0 auto}.stage-icon{width:44px;height:44px;border-radius:10px;object-fit:cover;float:left;margin:0 10px 6px 0}.author-credit{position:fixed;right:10px;bottom:7px;z-index:20;color:#5d675f;background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.06)}.workflow{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}.workflow b{display:block;margin-bottom:6px}.workflow ol{margin:0;padding-left:20px}.workflow li{margin:3px 0;font-size:13px}.sync-health{margin-top:7px;padding:8px;border-radius:6px;background:#eef1ee;color:var(--muted);font-size:12px;font-weight:700}.sync-health.ok{background:#ecf8f1;color:var(--ok)}.sync-health.warn{background:#fff7e8;color:var(--warn)}.sync-health.bad{background:#fff0ed;color:var(--bad)}.advanced-note{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:700}body.client-mode{padding-bottom:28px}body.client-mode .author-credit{font-size:11px;right:6px;bottom:5px}body.client-mode .stage-icon{width:38px;height:38px;margin-right:8px}@media(max-width:520px){.app-logo{width:30px;height:30px}.author-credit{font-size:11px}}' +
+          '.brand{display:flex;align-items:center;gap:10px}.app-logo{width:38px;height:38px;border-radius:8px;object-fit:cover;flex:0 0 auto}.stage-icon{width:44px;height:44px;border-radius:10px;object-fit:cover;float:left;margin:0 10px 6px 0}.author-credit{position:fixed;right:10px;bottom:7px;z-index:20;color:#5d675f;background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.06)}.workflow{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}.workflow b{display:block;margin-bottom:6px}.workflow ol{margin:0;padding-left:20px}.workflow li{margin:3px 0;font-size:13px}.sync-health{margin-top:7px;padding:8px;border-radius:6px;background:#fff7e8;color:var(--warn);font-size:12px;font-weight:700}.advanced-note{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:700}body.client-mode{padding-bottom:28px}body.client-mode .author-credit{font-size:11px;right:6px;bottom:5px}body.client-mode .stage-icon{width:38px;height:38px;margin-right:8px}@media(max-width:520px){.app-logo{width:30px;height:30px}.author-credit{font-size:11px}}' +
           '</style>'
         );
         html = html.replace(
@@ -43,7 +43,7 @@
         html = html.replace('Import z Verto', 'Krok 1: Import z Verto');
         html = html.replace(
           '<div id="sessionLink" class="small"></div><img id="qr" class="qr" alt="Kod QR sesji" hidden>',
-          '<div id="sessionLink" class="small"></div><div id="syncHealth" class="sync-health warn">Najpierw zapisz import, potem utwórz sesję dla Zebry.</div><span class="advanced-note">Przycisk Dołącz służy tylko dla drugiego komputera/tabletu. Zebra dołącza przez QR.</span><img id="qr" class="qr" alt="Kod QR sesji" hidden>'
+          '<div id="sessionLink" class="small"></div><div id="syncHealth" class="sync-health">Najpierw zapisz import, potem utwórz sesję dla Zebry.</div><span class="advanced-note">Przycisk Dołącz służy tylko dla drugiego komputera/tabletu. Zebra dołącza przez QR.</span><img id="qr" class="qr" alt="Kod QR sesji" hidden>'
         );
         html = html.replace(
           '</main>',
@@ -56,254 +56,18 @@
         html = html.replace("speak('duplikat')", "speak('już wcześniej zeskanowana')");
         html = html.replace("setStatus('DUPLIKAT'", "setStatus('już wcześniej zeskanowana'");
         html = html.replace("speak('błąd')", "speak('brak w bazie importu')");
-        html = html.replace('</body>', `<script>
-(function(){
-  var IMPORT_VERSION_KEY = 'dpd-ecomm-import-version-v11';
-  var SESSION_VERSION_KEY = 'dpd-ecomm-session-version-v11';
-  var DEVICE_ID_KEY = 'dpd-ecomm-device-id-v11';
-  var deviceId = localStorage.getItem(DEVICE_ID_KEY) || Math.random().toString(36).slice(2, 10).toUpperCase();
-  localStorage.setItem(DEVICE_ID_KEY, deviceId);
-  var baseRender = render;
-  var baseHandleScan = handleScan;
-
-  function statsFor(map){
-    var vals = Object.values(map || {}).map(normalizeEntry);
-    var ecomm = vals.filter(function(v){ return !!v.isEcomm; }).length;
-    return { total: vals.length, ecomm: ecomm, notEcomm: vals.length - ecomm };
-  }
-  function hashText(text){
-    var h = 2166136261;
-    for (var i = 0; i < text.length; i++) {
-      h ^= text.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return (h >>> 0).toString(36).toUpperCase();
-  }
-  function importVersion(map){
-    var keys = Object.keys(map || {}).sort();
-    if (!keys.length) return '';
-    return keys.length + '-' + hashText(keys.map(function(k){
-      var e = normalizeEntry(map[k]);
-      return k + '|' + e.mm + '|' + e.warehouse + '|' + !!e.isEcomm;
-    }).join('\n'));
-  }
-  function currentImportVersion(){
-    return importVersion(state.trackingMap);
-  }
-  function setSyncHealth(text, mode){
-    var box = document.getElementById('syncHealth');
-    if (!box) return;
-    box.className = 'sync-health ' + (mode || 'warn');
-    box.textContent = text;
-  }
-  function activeSession(){
-    return !!(sync.peer || sync.conn || sync.clients.length || sync.role);
-  }
-  function validImport(map){
-    var s = statsFor(map);
-    return s.total > 0 && s.ecomm > 0;
-  }
-  function scanKey(scan){
-    return [scan.status, scan.tracking || '', scan.mm || '', scan.timestamp || ''].join('|');
-  }
-  function mergeScans(remoteScans){
-    var seen = new Set(state.scans.map(scanKey));
-    (remoteScans || []).forEach(function(scan){
-      var key = scanKey(scan);
-      if (!seen.has(key)) {
-        state.scans.unshift(scan);
-        seen.add(key);
-      }
-    });
-    state.scans.sort(function(a, b){ return new Date(b.timestamp || 0) - new Date(a.timestamp || 0); });
-  }
-
-  extractTracking = function(v){
-    var n = normTrack(v);
-    var preferred = n.match(/10\d{11}U/);
-    return preferred ? preferred[0] : '';
-  };
-
-  parseTracking = function(v){
-    var n = normTrack(v);
-    var imported = Object.keys(state.trackingMap).find(function(k){ return n.includes(k); });
-    return imported || extractTracking(v);
-  };
-
-  payload = function(){
-    return {
-      scans: state.scans,
-      trackingMap: state.trackingMap,
-      importVersion: currentImportVersion(),
-      deviceId: deviceId,
-      role: sync.role,
-      fields: { operator: operator.value.trim() }
-    };
-  };
-
-  applyRemote = function(p){
-    if (!p || !Array.isArray(p.scans)) return;
-    sync.applying = true;
-    if (sync.role === 'host') {
-      mergeScans(p.scans);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.scans));
-      render();
-      sync.applying = false;
-      setStatus('Sesja zsynchronizowana', 'Komputer: ' + state.scans.length + ' skanów | Zebra: ' + p.scans.length + ' skanów', 'ok');
-      broadcast();
-      return;
-    }
-    state.scans = p.scans;
-    state.trackingMap = p.trackingMap && typeof p.trackingMap === 'object' ? p.trackingMap : state.trackingMap;
-    if (p.fields) operator.value = p.fields.operator || operator.value;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.scans));
-    localStorage.setItem(MAP_KEY, JSON.stringify(state.trackingMap));
-    localStorage.setItem(IMPORT_VERSION_KEY, currentImportVersion());
-    render();
-    sync.applying = false;
-    setStatus('Sesja zsynchronizowana', 'Skanów: ' + state.scans.length + ' | Import: ' + currentImportVersion(), 'ok');
-  };
-
-  startSession = function(){
-    var s = statsFor(state.trackingMap);
-    if (!validImport(state.trackingMap)) {
-      setStatus('Najpierw zapisz prawidłowy import', 'Sesji dla Zebry nie można utworzyć bez importu z pozycjami Ecomm.', 'bad');
-      setSyncHealth('Brak prawidłowego importu. QR jest zablokowany.', 'bad');
-      return;
-    }
-    if (!window.Peer) { setSession('Brak biblioteki online', 'bad'); return; }
-    closeSession();
-    var code = Math.random().toString(36).slice(2, 8).toUpperCase();
-    var version = currentImportVersion();
-    localStorage.setItem(SESSION_VERSION_KEY, version);
-    sessionCode.value = code;
-    sync.role = 'host';
-    sync.peer = new Peer(peerId(code));
-    setSession('Tworzenie sesji ' + code, 'warn');
-    setSyncHealth('Tworzenie sesji dla importu ' + version + '...', 'warn');
-    sync.peer.on('open', function(){
-      var link = location.origin + location.pathname + '?join=' + encodeURIComponent(code) + '&db=' + encodeURIComponent(version);
-      sessionLink.textContent = link;
-      qr.src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(link);
-      qr.hidden = false;
-      setSession('Sesja gotowa: ' + code, 'ok');
-      setSyncHealth('QR aktualny. Import: ' + version + ' | Pozycji: ' + s.total + ' | Ecomm: ' + s.ecomm, 'ok');
-    });
-    sync.peer.on('connection', function(conn){
-      sync.clients.push(conn);
-      wire(conn);
-      conn.on('open', function(){
-        conn.send({ type: 'state', payload: payload() });
-        setSession('Zebra połączona. Sesja: ' + code, 'ok');
-        setSyncHealth('Zebra połączona z importem ' + version + '. Można skanować.', 'ok');
-      });
-    });
-    sync.peer.on('error', function(){ setSession('Nie udało się utworzyć sesji', 'bad'); });
-  };
-
-  joinSession = function(raw){
-    if (!window.Peer) { setSession('Brak biblioteki online', 'bad'); return; }
-    var code = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!code) { setSession('Wpisz kod sesji', 'warn'); return; }
-    closeSession();
-    sessionCode.value = code;
-    sync.role = 'client';
-    sync.peer = new Peer();
-    setSession('Łączenie z sesją ' + code, 'warn');
-    setSyncHealth('Zebra czeka na import z komputera. Nie skanuj jeszcze.', 'warn');
-    sync.peer.on('open', function(){
-      sync.conn = sync.peer.connect(peerId(code), { reliable: true });
-      wire(sync.conn);
-      sync.conn.on('open', function(){
-        setSession('Połączono z sesją ' + code, 'ok');
-        setSyncHealth('Połączono. Pobieram import z komputera...', 'warn');
-      });
-    });
-    sync.peer.on('error', function(){ setSession('Nie udało się dołączyć', 'bad'); });
-  };
-
-  handleScan = function(rawValue){
-    if (!validImport(state.trackingMap)) {
-      setStatus('Brak prawidłowego importu', 'Skanowanie jest zablokowane do czasu zapisania bazy z pozycjami Ecomm.', 'bad');
-      setSyncHealth('Skanowanie zablokowane: brak prawidłowego importu.', 'bad');
-      return;
-    }
-    if (sync.role === 'client' && activeSession() && !currentImportVersion()) {
-      setStatus('Zebra nie ma bazy', 'Poczekaj na synchronizację importu z komputera.', 'bad');
-      return;
-    }
-    baseHandleScan(rawValue);
-  };
-
-  document.getElementById('saveMapBtn').onclick = function(){
-    var parsed = parseTrackingMap(mappingInput.value);
-    if (!parsed.count || !parsed.ecomm) {
-      setStatus('Import wygląda nieprawidłowo', 'Nie znaleziono pozycji Ecomm. Sprawdź kolumny z Verto. Tracking DPD powinien zaczynać się od 10 i kończyć U.', 'bad');
-      setSyncHealth('Import odrzucony: 0 pozycji Ecomm albo zły format trackingów.', 'bad');
-      return;
-    }
-    var oldVersion = currentImportVersion();
-    var newVersion = importVersion(parsed.map);
-    if ((state.scans.length || activeSession()) && oldVersion && oldVersion !== newVersion) {
-      if (!confirm('Zmiana importu utworzy nową sesję, wyczyści skany i unieważni obecny kod QR. Kontynuować?')) return;
-      closeSession();
-      state.scans = [];
-      saveScans();
-    }
-    state.trackingMap = parsed.map;
-    localStorage.setItem(IMPORT_VERSION_KEY, newVersion);
-    saveMap();
-    render();
-    setStatus('Import zapisany', 'Wczytano pozycje Verto: ' + parsed.count + '. Ecomm: ' + parsed.ecomm + '. Poza Ecomm: ' + parsed.notEcomm + '.', 'ok');
-    setSyncHealth('Import zapisany: ' + newVersion + '. Teraz kliknij Utwórz sesję dla Zebry.', 'ok');
-  };
-
-  document.getElementById('clearMapBtn').onclick = function(){
-    if (activeSession() || state.scans.length) {
-      if (!confirm('Wyczyszczenie importu rozłączy sesję, wyczyści skany i unieważni QR. Kontynuować?')) return;
-    }
-    closeSession();
-    state.trackingMap = {};
-    state.scans = [];
-    mappingInput.value = '';
-    localStorage.removeItem(IMPORT_VERSION_KEY);
-    localStorage.removeItem(SESSION_VERSION_KEY);
-    saveMap();
-    saveScans();
-    render();
-    setStatus('Import wyczyszczony', 'Wklej nowy import z Verto i kliknij Zapisz import.', 'warn');
-    setSyncHealth('Brak importu. QR jest zablokowany.', 'warn');
-  };
-
-  document.getElementById('clearBtn').onclick = function(){
-    if (!confirm('Wyczyścić sesję skanowania? Import zostanie zachowany, ale QR trzeba utworzyć ponownie.')) return;
-    closeSession();
-    state.scans = [];
-    saveScans();
-    render();
-    setStatus('Sesja wyczyszczona', 'Import został zachowany. Kliknij Utwórz sesję dla Zebry, aby wygenerować nowy QR.', 'warn');
-    setSyncHealth(validImport(state.trackingMap) ? 'Sesja skanów wyczyszczona. Utwórz nowy QR dla obecnego importu.' : 'Brak prawidłowego importu.', validImport(state.trackingMap) ? 'warn' : 'bad');
-  };
-
-  render = function(){
-    baseRender();
-    var s = statsFor(state.trackingMap);
-    var version = currentImportVersion();
-    var mode = validImport(state.trackingMap) ? 'ok' : 'warn';
-    if (!validImport(state.trackingMap)) {
-      setSyncHealth('Krok 1: wklej i zapisz prawidłowy import. QR jest zablokowany.', 'warn');
-    } else if (sync.role === 'host' && sync.clients.length) {
-      setSyncHealth('Zebra połączona | skany komputer: ' + state.scans.length + ' | import: ' + version, 'ok');
-    } else if (sync.role === 'client') {
-      setSyncHealth('Zebra | skany: ' + state.scans.length + ' | import: ' + version, mode);
-    } else {
-      setSyncHealth('Import gotowy: ' + version + ' | pozycji: ' + s.total + ' | Ecomm: ' + s.ecomm + '. Teraz utwórz sesję dla Zebry.', 'ok');
-    }
-  };
-
-  render();
-})();
-<\/script></body>');
+        html = html.replace(
+          "function extractTracking(v){const n=normTrack(v),preferred=n.match(/1\\d{12}U/);if(preferred)return preferred[0];const dpd=n.match(/\\d{10,15}[A-Z0-9]?/);return dpd?dpd[0]:''}",
+          "function extractTracking(v){const n=normTrack(v),preferred=n.match(/10\\d{11}U/);return preferred?preferred[0]:''}"
+        );
+        html = html.replace(
+          "function startSession(){if(!window.Peer){setSession('Brak biblioteki online','bad');return}closeSession();const code=Math.random().toString(36).slice(2,8).toUpperCase();",
+          "function startSession(){const vals=Object.values(state.trackingMap).map(normalizeEntry),ecomm=vals.filter(v=>v.isEcomm).length;if(!vals.length||!ecomm){setStatus('Najpierw zapisz prawidłowy import','Sesji dla Zebry nie można utworzyć bez importu z pozycjami Ecomm.','bad');const h=document.getElementById('syncHealth');if(h)h.textContent='QR zablokowany: najpierw zapisz prawidłowy import z pozycjami Ecomm.';return}if(!window.Peer){setSession('Brak biblioteki online','bad');return}closeSession();const code=Math.random().toString(36).slice(2,8).toUpperCase();"
+        );
+        html = html.replace(
+          "el('saveMapBtn').onclick=()=>{const parsed=parseTrackingMap(mappingInput.value);state.trackingMap=parsed.map;saveMap();render();setStatus('Import zapisany','Wczytano pozycje Verto: '+parsed.count+'. Ecomm: '+parsed.ecomm+'. Poza Ecomm: '+parsed.notEcomm+'.',parsed.count?'ok':'warn')};",
+          "el('saveMapBtn').onclick=()=>{const parsed=parseTrackingMap(mappingInput.value);if(!parsed.count||!parsed.ecomm){setStatus('Import wygląda nieprawidłowo','Nie znaleziono pozycji Ecomm. Sprawdź kolumny z Verto. Tracking DPD powinien zaczynać się od 10 i kończyć U.','bad');const h=document.getElementById('syncHealth');if(h)h.textContent='Import odrzucony: 0 pozycji Ecomm albo zły format trackingów.';return}if((state.scans.length||sync.peer||sync.conn)&&!confirm('Zmiana importu unieważni obecny QR i powinna rozpocząć nową sesję. Kontynuować?'))return;state.trackingMap=parsed.map;saveMap();render();setStatus('Import zapisany','Wczytano pozycje Verto: '+parsed.count+'. Ecomm: '+parsed.ecomm+'. Poza Ecomm: '+parsed.notEcomm+'.','ok');const h=document.getElementById('syncHealth');if(h)h.textContent='Import zapisany. Teraz kliknij Utwórz sesję dla Zebry.'};"
+        );
         document.open();
         document.write(html);
         document.close();
