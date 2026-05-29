@@ -249,22 +249,23 @@ async function loadPickingTasks(batchId) {
   pickingDetails.classList.remove("hidden");
   pickingDetailsTitle.textContent = `Zawartosc pickingu ${batchId}`;
   if (!pickingRows.children.length) {
-    pickingRows.innerHTML = "<tr><td colspan=\"9\">Ladowanie...</td></tr>";
+    pickingRows.innerHTML = "<tr><td colspan=\"10\">Ladowanie...</td></tr>";
   }
   const response = await fetch(`/api/picking/tasks?limit=500&batch_id=${encodeURIComponent(batchId)}`, {
     headers: { "X-API-Key": apiKeyInput.value }
   });
   if (!response.ok) {
-    pickingRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
+    pickingRows.innerHTML = "<tr><td colspan=\"10\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
   const tasks = await response.json();
   if (!tasks.length) {
-    pickingRows.innerHTML = "<tr><td colspan=\"9\">Brak pozycji w tym pickingu.</td></tr>";
+    pickingRows.innerHTML = "<tr><td colspan=\"10\">Brak pozycji w tym pickingu.</td></tr>";
     return;
   }
   pickingRows.innerHTML = tasks.map((task) => `
     <tr>
+      <td>${escapeHtml(formatScanTime(task.picked_at || task.assigned_at))}</td>
       <td>${escapeHtml(formatPickingStatus(task.status))}</td>
       <td>${escapeHtml(task.barcode || "")}</td>
       <td>${escapeHtml(task.sku)}</td>
@@ -356,7 +357,7 @@ function formatScanTime(value) {
     ":",
     pad(date.getSeconds()),
     ".",
-    pad(date.getMilliseconds(), 3)
+    pad(Math.floor(date.getMilliseconds() / 10), 2)
   ].join("");
 }
 
@@ -372,6 +373,7 @@ function formatOperation(value) {
 function formatPickingStatus(value) {
   return {
     pending: "Do pobrania",
+    assigned: "W trakcie",
     done: "Zrobione",
     blocked: "Brak stanu"
   }[value] || value;
