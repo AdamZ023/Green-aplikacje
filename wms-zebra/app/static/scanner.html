@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260527-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260529-2">
 </head>
 <body class="scanner-body">
   <main class="scanner">
@@ -34,6 +34,7 @@
       <div class="operation-grid">
         <button id="chooseReceive" type="button">Przyjecie</button>
         <button id="chooseMove" type="button">Przesuniecie</button>
+        <button id="choosePicking" type="button">Picking</button>
       </div>
       <button id="changeOperator" class="secondary" type="button">Zmien operatora</button>
     </section>
@@ -82,6 +83,33 @@
       </div>
     </section>
 
+    <section id="pickingPanel" class="form workflow-panel hidden">
+      <h2>Picking</h2>
+      <output id="pickingResult" class="operation-result hidden"></output>
+      <div class="scanner-summary">
+        <strong id="pickingProduct">Brak aktywnego zadania</strong>
+        <span id="pickingDetails">Pobierz kolejne zadanie.</span>
+      </div>
+      <div class="scan-target active" data-target="pickingSku">
+        <span>SKU / kod</span>
+        <strong id="pickingSkuValue">Zeskanuj produkt</strong>
+      </div>
+      <div class="scan-target" data-target="pickingFrom">
+        <span>Z lokalizacji</span>
+        <strong id="pickingFromValue">Zeskanuj lokalizacje zrodlowa</strong>
+      </div>
+      <div class="scan-target" data-target="pickingTo">
+        <span>Do lokalizacji</span>
+        <strong id="pickingToValue">Zeskanuj lokalizacje docelowa</strong>
+      </div>
+      <div class="actions">
+        <button id="loadPickingTask" type="button">Pobierz zadanie</button>
+        <button id="completePickingTask" type="button">Zakoncz</button>
+        <button id="pickingReset" type="button">Wyczysc</button>
+        <button class="secondary backToOperations" type="button">Wroc</button>
+      </div>
+    </section>
+
     <output id="status" class="status"></output>
     <input
       id="scanCapture"
@@ -95,6 +123,6 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260527-2"></script>
+  <script src="/static/scanner.js?v=20260529-2"></script>
 </body>
 </html>
