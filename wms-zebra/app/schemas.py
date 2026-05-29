@@ -87,3 +87,34 @@ class OperationOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PickingImportOut(BaseModel):
+    batch_id: str
+    created: int
+    blocked: int
+
+
+class PickingTaskOut(BaseModel):
+    id: int
+    batch_id: str
+    sku: str
+    barcode: str | None = None
+    name: str | None = None
+    source_location: str | None
+    target_location: str
+    quantity: int
+    status: str
+    scanner_id: str | None = None
+    operator: str | None = None
+    picked_at: datetime | None = None
+    created_at: datetime
+
+
+class PickingCompleteRequest(BaseModel):
+    task_id: int
+    sku: str
+    source_location: str
+    target_location: str
+    scanner_id: str = Field(min_length=1, max_length=120)
+    operator: str | None = Field(default=None, max_length=120)
