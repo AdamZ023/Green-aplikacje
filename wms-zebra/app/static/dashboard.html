@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260527-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260529-1">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260527-2" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260527-2" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260529-1" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260529-1" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -25,7 +25,7 @@
       <button id="warehouseViewButton" type="button">Stan Magazynowy</button>
       <button id="logisticsViewButton" type="button">Stan Logistyczny</button>
       <button id="historyViewButton" type="button">Historia operacji</button>
-      <a class="button-link" href="/zebra-v2?v=20260527-2">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260529-1">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -72,6 +72,11 @@
 
     <section id="operationHistoryView" class="dashboard-view hidden">
       <h2>Historia operacji</h2>
+      <div class="filter-bar" aria-label="Filtr historii operacji">
+        <button id="historyAllFilter" type="button" class="secondary">Wszystkie</button>
+        <button id="historyReceiveFilter" type="button" class="secondary">Przyjecia</button>
+        <button id="historyMoveFilter" type="button">Przesuniecia</button>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -93,6 +98,6 @@
       </div>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260527-2"></script>
+  <script src="/static/dashboard.js?v=20260529-1"></script>
 </body>
 </html>
