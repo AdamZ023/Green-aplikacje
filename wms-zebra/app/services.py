@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Item, Operation, Stock
+from app.models import Item, Operation, PickingTask, Stock
 
 
 class WmsError(ValueError):
@@ -142,3 +142,57 @@ def move_stock(
     db.refresh(source)
     db.refresh(target)
     return source, target
+
+
+def complete_picking_task(
+    db: Session,
+    task_id: int,
+    scanned_code: str,
+    source_location: str,
+    target_location: str,
+    scanner_id: str,
+    operator: str | None,
+) -> PickingTask:
+    task = db.scalar(select(PickingTask).where(PickingTask.id == task_id).with_for_update())
+    if not task:
+        raise WmsError("Nie znaleziono zadania picking.")
+    if task.status != "pending":
+        raise WmsError("Zadanie picking nie jest juz aktywne.")
+    if not task.source_location:
+        raise WmsError("Zadanie nie ma dostepnej lokalizacji zrodlowej.")
+
+    item = get_item_by_code(db, scanned_code)
+    if not item or item.sku != task.sku:
+        raise WmsError("Zeskanowano inny produkt niz w zadaniu.")
+    if source_location.strip() != task.source_location:
+        raise WmsError("Zeskanowano inna lokalizacje zrodlowa.")
+    if target_location.strip() != task.target_location:
+        raise WmsError("Zeskanowano inna lokalizacje docelowa.")
+
+    source = get_or_create_stock(db, item, task.source_location)
+    if source.quantity < task.quantity:
+        raise WmsError("Za malo towaru na lokalizacji picking.")
+
+    target = get_or_create_stock(db, item, task.target_location)
+    source.quantity -= task.quantity
+    target.quantity += task.quantity
+    now = scan_timestamp()
+    task.status = "done"
+    task.scanner_id = scanner_id
+    task.operator = operator
+    task.picked_at = now
+    db.add(
+        Operation(
+            operation_type="picking",
+            sku=item.sku,
+            from_location=task.source_location,
+            to_location=task.target_location,
+            quantity=task.quantity,
+            scanner_id=scanner_id,
+            operator=operator,
+            created_at=now,
+        )
+    )
+    db.commit()
+    db.refresh(task)
+    return task
