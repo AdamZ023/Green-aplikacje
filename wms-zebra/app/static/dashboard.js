@@ -2,8 +2,11 @@ const apiKeyInput = document.querySelector("#apiKey");
 const warehouseRows = document.querySelector("#warehouseRows");
 const logisticsRows = document.querySelector("#logisticsRows");
 const historyRows = document.querySelector("#historyRows");
+const pickingBatchRows = document.querySelector("#pickingBatchRows");
 const pickingRows = document.querySelector("#pickingRows");
 const pickingFile = document.querySelector("#pickingFile");
+const pickingDetails = document.querySelector("#pickingDetails");
+const pickingDetailsTitle = document.querySelector("#pickingDetailsTitle");
 const pickingImportStatus = document.querySelector("#pickingImportStatus");
 const views = {
   warehouse: document.querySelector("#warehouseView"),
@@ -25,6 +28,7 @@ const historyFilterButtons = {
 const savedKey = localStorage.getItem("wmsApiKey") || "";
 let activeView = localStorage.getItem("wmsDashboardView") || "warehouse";
 let activeHistoryFilter = localStorage.getItem("wmsHistoryFilter") || "move";
+let activePickingBatch = localStorage.getItem("wmsPickingBatch") || "";
 
 apiKeyInput.value = savedKey;
 
@@ -70,7 +74,7 @@ async function loadAll() {
     loadWarehouseStock(),
     loadLogisticsStock(),
     loadOperationHistory(),
-    loadPickingTasks()
+    loadPickingBatches()
   ]);
 }
 
@@ -189,11 +193,65 @@ async function loadOperationHistory() {
   }).join("");
 }
 
-async function loadPickingTasks() {
+async function loadPickingBatches() {
+  if (!pickingBatchRows.children.length) {
+    pickingBatchRows.innerHTML = "<tr><td colspan=\"6\">Ladowanie...</td></tr>";
+  }
+  const response = await fetch("/api/picking/batches", {
+    headers: { "X-API-Key": apiKeyInput.value }
+  });
+  if (!response.ok) {
+    pickingBatchRows.innerHTML = "<tr><td colspan=\"6\">Brak dostepu albo blad API.</td></tr>";
+    pickingDetails.classList.add("hidden");
+    return;
+  }
+  const batches = await response.json();
+  if (!batches.length) {
+    activePickingBatch = "";
+    localStorage.removeItem("wmsPickingBatch");
+    pickingBatchRows.innerHTML = "<tr><td colspan=\"6\">Brak pickingow.</td></tr>";
+    pickingDetails.classList.add("hidden");
+    return;
+  }
+
+  if (!batches.some((batch) => batch.batch_id === activePickingBatch)) {
+    activePickingBatch = batches[0].batch_id;
+    localStorage.setItem("wmsPickingBatch", activePickingBatch);
+  }
+
+  pickingBatchRows.innerHTML = batches.map((batch) => `
+    <tr class="clickable-row ${batch.batch_id === activePickingBatch ? "selected-row" : ""}" data-batch-id="${escapeHtml(batch.batch_id)}">
+      <td>${escapeHtml(batch.batch_id)}</td>
+      <td>${escapeHtml(batch.source_filename || "")}</td>
+      <td>${batch.total_tasks}</td>
+      <td>${batch.assigned_tasks}</td>
+      <td>${escapeHtml(batch.status)}</td>
+      <td>${batch.progress_percent}%</td>
+    </tr>
+  `).join("");
+
+  pickingBatchRows.querySelectorAll("[data-batch-id]").forEach((row) => {
+    row.addEventListener("click", () => {
+      activePickingBatch = row.dataset.batchId;
+      localStorage.setItem("wmsPickingBatch", activePickingBatch);
+      loadPickingBatches();
+    });
+  });
+
+  await loadPickingTasks(activePickingBatch);
+}
+
+async function loadPickingTasks(batchId) {
+  if (!batchId) {
+    pickingDetails.classList.add("hidden");
+    return;
+  }
+  pickingDetails.classList.remove("hidden");
+  pickingDetailsTitle.textContent = `Zawartosc pickingu ${batchId}`;
   if (!pickingRows.children.length) {
     pickingRows.innerHTML = "<tr><td colspan=\"9\">Ladowanie...</td></tr>";
   }
-  const response = await fetch("/api/picking/tasks?limit=200", {
+  const response = await fetch(`/api/picking/tasks?limit=500&batch_id=${encodeURIComponent(batchId)}`, {
     headers: { "X-API-Key": apiKeyInput.value }
   });
   if (!response.ok) {
@@ -202,7 +260,7 @@ async function loadPickingTasks() {
   }
   const tasks = await response.json();
   if (!tasks.length) {
-    pickingRows.innerHTML = "<tr><td colspan=\"9\">Brak zadan picking.</td></tr>";
+    pickingRows.innerHTML = "<tr><td colspan=\"9\">Brak pozycji w tym pickingu.</td></tr>";
     return;
   }
   pickingRows.innerHTML = tasks.map((task) => `
@@ -247,7 +305,9 @@ async function importPicking() {
   pickingImportStatus.textContent = `Utworzono picking ${payload.batch_id}: ${payload.created} pozycji, blokady: ${payload.blocked}.`;
   pickingImportStatus.classList.remove("error");
   pickingFile.value = "";
-  await loadPickingTasks();
+  activePickingBatch = payload.batch_id;
+  localStorage.setItem("wmsPickingBatch", activePickingBatch);
+  await loadPickingBatches();
 }
 
 function emptyHistoryMessage() {
