@@ -436,38 +436,43 @@ button.secondary:hover,
 
 .picking-task-table th:nth-child(2),
 .picking-task-table td:nth-child(2) {
-  width: 11%;
+  width: 8%;
 }
 
 .picking-task-table th:nth-child(3),
 .picking-task-table td:nth-child(3) {
-  width: 17%;
+  width: 10%;
 }
 
 .picking-task-table th:nth-child(4),
 .picking-task-table td:nth-child(4) {
-  width: 23%;
+  width: 15%;
 }
 
 .picking-task-table th:nth-child(5),
-.picking-task-table td:nth-child(5),
-.picking-task-table th:nth-child(6),
-.picking-task-table td:nth-child(6) {
-  width: 11%;
+.picking-task-table td:nth-child(5) {
+  width: 20%;
 }
 
+.picking-task-table th:nth-child(6),
+.picking-task-table td:nth-child(6),
 .picking-task-table th:nth-child(7),
 .picking-task-table td:nth-child(7) {
-  width: 5%;
+  width: 10%;
 }
 
 .picking-task-table th:nth-child(8),
 .picking-task-table td:nth-child(8) {
-  width: 7%;
+  width: 5%;
 }
 
 .picking-task-table th:nth-child(9),
 .picking-task-table td:nth-child(9) {
+  width: 7%;
+}
+
+.picking-task-table th:nth-child(10),
+.picking-task-table td:nth-child(10) {
   width: 6%;
 }
 
