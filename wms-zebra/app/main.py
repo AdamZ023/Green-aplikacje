@@ -1,4 +1,5 @@
 from io import BytesIO
+import csv
 import re
 from uuid import uuid4
 
@@ -13,13 +14,16 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Item, Operation, ScannerDevice, ScannerLoginSession, Stock
+from app.models import Item, Operation, PickingTask, ScannerDevice, ScannerLoginSession, Stock
 from app.schemas import (
     ItemCreate,
     ItemOut,
     IssueRequest,
     MoveRequest,
     OperationOut,
+    PickingCompleteRequest,
+    PickingImportOut,
+    PickingTaskOut,
     ReceiveRequest,
     ScannerRegistrationOut,
     ScannerRegistrationRequest,
@@ -27,10 +31,23 @@ from app.schemas import (
     WarehouseStockOut,
 )
 from app.security import require_api_key
-from app.services import WmsError, create_item, issue_stock, move_stock, receive_stock
+from app.services import WmsError, complete_picking_task, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260527-2"
+APP_VERSION = "20260529-2"
 WAREHOUSE_CODE = "9201D"
+PICKING_HEADER_ALIASES = {
+    "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
+    "quantity": {"ilosc", "qty", "quantity", "szt", "sztuki"},
+    "target": {
+        "do lokalizacji",
+        "lokalizacja docelowa",
+        "docelowa lokalizacja",
+        "lokalizacja",
+        "dest",
+        "destination",
+        "gdzie",
+    },
+}
 CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -49,6 +66,9 @@ else:
             connection.execute(
                 text("CREATE UNIQUE INDEX IF NOT EXISTS ix_scanner_devices_device_uid ON scanner_devices (device_uid)")
             )
+
+if "picking_tasks" not in inspector.get_table_names():
+    PickingTask.__table__.create(bind=engine)
 
 app = FastAPI(title="WMS Zebra API", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -340,6 +360,60 @@ def move(payload: MoveRequest, db: Session = Depends(get_db)) -> list[StockOut]:
     ]
 
 
+@app.post("/api/picking/import", response_model=PickingImportOut, dependencies=[Depends(require_api_key)])
+async def import_picking(request: Request, db: Session = Depends(get_db)) -> PickingImportOut:
+    filename = request.headers.get("X-Filename", "picking.csv")
+    content = await request.body()
+    try:
+        rows = parse_picking_file(filename, content)
+        batch_id = uuid4().hex[:12].upper()
+        created, blocked = create_picking_tasks(db, batch_id, rows)
+    except WmsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PickingImportOut(batch_id=batch_id, created=created, blocked=blocked)
+
+
+@app.get("/api/picking/tasks", response_model=list[PickingTaskOut], dependencies=[Depends(require_api_key)])
+def list_picking_tasks(
+    status: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[PickingTaskOut]:
+    query = select(PickingTask).order_by(PickingTask.id.desc()).limit(limit)
+    if status:
+        query = select(PickingTask).where(PickingTask.status == status).order_by(PickingTask.id.desc()).limit(limit)
+    tasks = list(db.scalars(query))
+    return [picking_task_out(db, task) for task in tasks]
+
+
+@app.get("/api/picking/next", response_model=PickingTaskOut | None, dependencies=[Depends(require_api_key)])
+def next_picking_task(db: Session = Depends(get_db)) -> PickingTaskOut | None:
+    task = db.scalar(
+        select(PickingTask)
+        .where(PickingTask.status == "pending", PickingTask.source_location.is_not(None))
+        .order_by(PickingTask.id)
+        .limit(1)
+    )
+    return picking_task_out(db, task) if task else None
+
+
+@app.post("/api/picking/complete", response_model=PickingTaskOut, dependencies=[Depends(require_api_key)])
+def complete_picking(payload: PickingCompleteRequest, db: Session = Depends(get_db)) -> PickingTaskOut:
+    try:
+        task = complete_picking_task(
+            db,
+            payload.task_id,
+            payload.sku,
+            payload.source_location,
+            payload.target_location,
+            payload.scanner_id,
+            payload.operator,
+        )
+    except WmsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return picking_task_out(db, task)
+
+
 @app.get("/api/operations", response_model=list[OperationOut], dependencies=[Depends(require_api_key)])
 def operations(
     limit: int = Query(default=100, ge=1, le=500),
@@ -350,3 +424,162 @@ def operations(
     if operation_type:
         query = query.where(Operation.operation_type == operation_type)
     return list(db.scalars(query.order_by(Operation.id.desc()).limit(limit)))
+
+
+def parse_picking_file(filename: str, content: bytes) -> list[dict[str, str]]:
+    suffix = filename.lower().rsplit(".", 1)[-1] if "." in filename else "csv"
+    if suffix == "xlsx":
+        return parse_picking_xlsx(content)
+    if suffix == "csv":
+        return parse_picking_csv(content)
+    raise WmsError("Obslugiwane sa tylko pliki CSV i XLSX.")
+
+
+def parse_picking_csv(content: bytes) -> list[dict[str, str]]:
+    for encoding in ("utf-8-sig", "cp1250"):
+        try:
+            text = content.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise WmsError("Nie mozna odczytac kodowania pliku CSV.")
+
+    sample = text[:2048]
+    delimiter = ";" if sample.count(";") >= sample.count(",") else ","
+    return list(csv.DictReader(text.splitlines(), delimiter=delimiter))
+
+
+def parse_picking_xlsx(content: bytes) -> list[dict[str, str]]:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise WmsError("Brakuje biblioteki openpyxl do odczytu XLSX.") from exc
+
+    workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    if not rows:
+        return []
+    headers = [str(value or "").strip() for value in rows[0]]
+    parsed = []
+    for row in rows[1:]:
+        parsed.append({headers[index]: cell_to_text(value) for index, value in enumerate(row)})
+    return parsed
+
+
+def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]]) -> tuple[int, int]:
+    if not rows:
+        raise WmsError("Plik picking jest pusty.")
+
+    created = 0
+    blocked = 0
+    for row_number, row in enumerate(rows, start=2):
+        normalized = {normalize_header(key): str(value or "").strip() for key, value in row.items()}
+        code = normalize_code_value(get_picking_value(normalized, "code"))
+        quantity_text = get_picking_value(normalized, "quantity")
+        target = get_picking_value(normalized, "target")
+        if not code and not quantity_text and not target:
+            continue
+        if not code or not quantity_text or not target:
+            raise WmsError(f"Wiersz {row_number}: wymagane sa produkt, ilosc i lokalizacja docelowa.")
+        try:
+            quantity = int(float(quantity_text.replace(",", ".")))
+        except ValueError as exc:
+            raise WmsError(f"Wiersz {row_number}: ilosc musi byc liczba.") from exc
+        if quantity < 1:
+            raise WmsError(f"Wiersz {row_number}: ilosc musi byc wieksza od zera.")
+
+        item = db.scalar(select(Item).where((Item.sku == code) | (Item.barcode == code)))
+        if not item:
+            raise WmsError(f"Wiersz {row_number}: nie znaleziono produktu {code}.")
+
+        remaining = quantity
+        stocks = list(
+            db.scalars(
+                select(Stock)
+                .where(Stock.item_id == item.id, Stock.quantity > 0)
+                .order_by(Stock.location)
+            )
+        )
+        for stock in stocks:
+            if remaining <= 0:
+                break
+            pick_quantity = min(remaining, stock.quantity)
+            db.add(
+                PickingTask(
+                    batch_id=batch_id,
+                    sku=item.sku,
+                    source_location=stock.location,
+                    target_location=target,
+                    quantity=pick_quantity,
+                    status="pending",
+                )
+            )
+            created += 1
+            remaining -= pick_quantity
+        if remaining > 0:
+            db.add(
+                PickingTask(
+                    batch_id=batch_id,
+                    sku=item.sku,
+                    source_location=None,
+                    target_location=target,
+                    quantity=remaining,
+                    status="blocked",
+                )
+            )
+            created += 1
+            blocked += 1
+
+    if created == 0:
+        raise WmsError("Nie znaleziono zadnych pozycji do pickingu.")
+    db.commit()
+    return created, blocked
+
+
+def normalize_header(value: str) -> str:
+    return " ".join(str(value or "").strip().lower().replace("_", " ").split())
+
+
+def normalize_code_value(value: str) -> str:
+    value = value.strip()
+    if re.fullmatch(r"\d+\.0", value):
+        return value[:-2]
+    return value
+
+
+def cell_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def get_picking_value(row: dict[str, str], field: str) -> str:
+    aliases = PICKING_HEADER_ALIASES[field]
+    for alias in aliases:
+        value = row.get(normalize_header(alias))
+        if value:
+            return value
+    return ""
+
+
+def picking_task_out(db: Session, task: PickingTask) -> PickingTaskOut:
+    item = db.scalar(select(Item).where(Item.sku == task.sku))
+    return PickingTaskOut(
+        id=task.id,
+        batch_id=task.batch_id,
+        sku=task.sku,
+        barcode=item.barcode if item else None,
+        name=item.name if item else None,
+        source_location=task.source_location,
+        target_location=task.target_location,
+        quantity=task.quantity,
+        status=task.status,
+        scanner_id=task.scanner_id,
+        operator=task.operator,
+        picked_at=task.picked_at,
+        created_at=task.created_at,
+    )
