@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260529-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260529-3">
 </head>
 <body class="scanner-body">
   <main class="scanner">
@@ -90,17 +90,17 @@
         <strong id="pickingProduct">Brak aktywnego zadania</strong>
         <span id="pickingDetails">Pobierz kolejne zadanie.</span>
       </div>
-      <div class="scan-target active" data-target="pickingSku">
-        <span>SKU / kod</span>
-        <strong id="pickingSkuValue">Zeskanuj produkt</strong>
-      </div>
       <div class="scan-target" data-target="pickingFrom">
         <span>Z lokalizacji</span>
         <strong id="pickingFromValue">Zeskanuj lokalizacje zrodlowa</strong>
       </div>
-      <div class="scan-target" data-target="pickingTo">
-        <span>Do lokalizacji</span>
-        <strong id="pickingToValue">Zeskanuj lokalizacje docelowa</strong>
+      <div class="scan-target active" data-target="pickingSku">
+        <span>SKU / kod</span>
+        <strong id="pickingSkuValue">Zeskanuj produkt</strong>
+      </div>
+      <div id="pickingDestination" class="destination-card hidden">
+        <span>Karton docelowy</span>
+        <strong id="pickingDestinationValue"></strong>
       </div>
       <div class="actions">
         <button id="loadPickingTask" type="button">Pobierz zadanie</button>
@@ -123,6 +123,6 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260529-2"></script>
+  <script src="/static/scanner.js?v=20260529-3"></script>
 </body>
 </html>
