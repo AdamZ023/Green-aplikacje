@@ -22,6 +22,9 @@ const sessionOperator = document.querySelector("#sessionOperator");
 const receiveResult = document.querySelector("#receiveResult");
 const moveResult = document.querySelector("#moveResult");
 const pickingResult = document.querySelector("#pickingResult");
+const pickingBatchChoice = document.querySelector("#pickingBatchChoice");
+const pickingBatchList = document.querySelector("#pickingBatchList");
+const pickingWork = document.querySelector("#pickingWork");
 const pickingProduct = document.querySelector("#pickingProduct");
 const pickingDetails = document.querySelector("#pickingDetails");
 const pickingDestination = document.querySelector("#pickingDestination");
@@ -43,6 +46,7 @@ const state = {
   pickingFrom: ""
 };
 let activePickingTask = null;
+let selectedPickingBatch = null;
 
 const params = new URLSearchParams(window.location.search);
 const urlApiKey = params.get("key") || params.get("api_key") || "";
@@ -232,11 +236,15 @@ async function openPicking() {
   if (!canWork()) return;
   resetPickingScans(false);
   clearResult(pickingResult);
+  hidePickingDestination();
   hideWorkflows();
   mode = "picking";
   pickingPanel.classList.remove("hidden");
-  setActiveTarget("pickingFrom");
-  await loadPickingTask();
+  selectedPickingBatch = null;
+  activePickingTask = null;
+  pickingWork.classList.add("hidden");
+  pickingBatchChoice.classList.remove("hidden");
+  await loadPickingBatches();
 }
 
 function hideWorkflows() {
@@ -396,9 +404,22 @@ async function send(url, body, resultBox = null) {
 
 async function loadPickingTask(preserveDestination = false) {
   if (!canWork()) return;
+  if (!selectedPickingBatch) {
+    setStatus("Wybierz picking.", true);
+    return;
+  }
   setStatus("Pobieranie zadania picking...", false);
   const response = await fetch("/api/picking/next", {
-    headers: { "X-API-Key": apiKey.value }
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey.value
+    },
+    body: JSON.stringify({
+      batch_id: selectedPickingBatch.batch_id,
+      scanner_id: scannerId.value.trim(),
+      operator: operatorName.value.trim() || null
+    })
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -413,10 +434,59 @@ async function loadPickingTask(preserveDestination = false) {
   if (!activePickingTask) {
     setStatus("Brak zadan picking do wykonania.", false);
     setResult(pickingResult, "Brak zadan picking do wykonania.", false);
+    selectedPickingBatch = null;
+    pickingWork.classList.add("hidden");
+    pickingBatchChoice.classList.remove("hidden");
+    await loadPickingBatches();
     return;
   }
   setStatus("Zeskanuj lokalizacje zrodlowa.", false);
   setActiveTarget("pickingFrom");
+}
+
+async function loadPickingBatches() {
+  setStatus("Pobieranie listy pickingow...", false);
+  pickingBatchList.innerHTML = "";
+  const response = await fetch("/api/picking/batches", {
+    headers: { "X-API-Key": apiKey.value }
+  });
+  const batches = await response.json().catch(() => []);
+  if (!response.ok) {
+    const message = batches?.detail || "Nie mozna pobrac listy pickingow.";
+    setStatus(message, true);
+    setResult(pickingResult, message, true);
+    return;
+  }
+
+  const activeBatches = batches.filter((batch) => batch.status !== "zebrany");
+  if (!activeBatches.length) {
+    pickingBatchList.innerHTML = "<div class=\"empty-batch\">Brak pickingow do realizacji.</div>";
+    setStatus("Brak pickingow do realizacji.", false);
+    return;
+  }
+
+  for (const batch of activeBatches) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "picking-batch-button";
+    button.innerHTML = `
+      <strong>${batch.batch_id}</strong>
+      <span>${batch.status} | ${batch.progress_percent}% | ${batch.assigned_tasks}/${batch.total_tasks} pozycji</span>
+    `;
+    button.addEventListener("click", () => selectPickingBatch(batch));
+    pickingBatchList.appendChild(button);
+  }
+  setStatus("Wybierz picking.", false);
+}
+
+async function selectPickingBatch(batch) {
+  selectedPickingBatch = batch;
+  pickingBatchChoice.classList.add("hidden");
+  pickingWork.classList.remove("hidden");
+  clearResult(pickingResult);
+  hidePickingDestination();
+  setStatus(`Wybrano picking ${batch.batch_id}.`, false);
+  await loadPickingTask();
 }
 
 async function submitPicking() {
@@ -571,7 +641,7 @@ function updateDisplays() {
 function updatePickingTaskDisplay() {
   if (!activePickingTask) {
     pickingProduct.textContent = "Brak aktywnego zadania";
-    pickingDetails.textContent = "Pobierz kolejne zadanie.";
+    pickingDetails.textContent = selectedPickingBatch ? `Picking ${selectedPickingBatch.batch_id}` : "Wybierz picking.";
     return;
   }
   pickingProduct.textContent = activePickingTask.name || activePickingTask.sku;
@@ -594,10 +664,23 @@ function speak(message) {
   if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(message);
+  const voiceSettings = getScannerVoiceSettings();
   utterance.lang = "pl-PL";
-  utterance.rate = 0.9;
-  utterance.pitch = 1;
+  utterance.rate = voiceSettings.rate;
+  utterance.pitch = voiceSettings.pitch;
   window.speechSynthesis.speak(utterance);
+}
+
+function getScannerVoiceSettings() {
+  const match = scannerId.value.trim().match(/(\d+)$/);
+  const number = match ? Number(match[1]) : 1;
+  const variants = [
+    { rate: 0.82, pitch: 0.9 },
+    { rate: 1.02, pitch: 1.15 },
+    { rate: 0.92, pitch: 1.0 },
+    { rate: 1.12, pitch: 0.95 }
+  ];
+  return variants[(number - 1) % variants.length];
 }
 
 function setText(selector, value) {
