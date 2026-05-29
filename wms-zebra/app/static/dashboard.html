@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260529-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260529-3">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260529-2" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260529-2" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260529-3" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260529-3" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -26,7 +26,7 @@
       <button id="logisticsViewButton" type="button">Stan Logistyczny</button>
       <button id="historyViewButton" type="button">Historia operacji</button>
       <button id="pickingViewButton" type="button">Picking</button>
-      <a class="button-link" href="/zebra-v2?v=20260529-2">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260529-3">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -106,26 +106,45 @@
         <button id="pickingImportButton" type="button">Utworz picking</button>
         <output id="pickingImportStatus"></output>
       </div>
+      <h2>Lista pickingow</h2>
       <div class="table-wrap">
-        <table>
+        <table class="picking-batch-table">
           <thead>
             <tr>
+              <th>Numer pickingu</th>
+              <th>Plik zrodlowy</th>
+              <th>Ilosc pozycji do zebrania</th>
+              <th>Ilosc pozycji przypisanych logistycznie</th>
               <th>Status</th>
-              <th>EAN</th>
-              <th>Indeks</th>
-              <th>Nazwa</th>
-              <th>Z lokalizacji</th>
-              <th>Do lokalizacji</th>
-              <th>Ilosc</th>
-              <th>Operator</th>
-              <th>ID skanera</th>
+              <th>Poziom wykonania</th>
             </tr>
           </thead>
-          <tbody id="pickingRows"></tbody>
+          <tbody id="pickingBatchRows"></tbody>
         </table>
       </div>
+      <section id="pickingDetails" class="history-section hidden">
+        <h2 id="pickingDetailsTitle">Zawartosc pickingu</h2>
+        <div class="table-wrap">
+          <table class="picking-task-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>EAN</th>
+                <th>Indeks</th>
+                <th>Nazwa</th>
+                <th>Z lokalizacji</th>
+                <th>Do lokalizacji</th>
+                <th>Ilosc</th>
+                <th>Operator</th>
+                <th>ID skanera</th>
+              </tr>
+            </thead>
+            <tbody id="pickingRows"></tbody>
+          </table>
+        </div>
+      </section>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260529-2"></script>
+  <script src="/static/dashboard.js?v=20260529-3"></script>
 </body>
 </html>
