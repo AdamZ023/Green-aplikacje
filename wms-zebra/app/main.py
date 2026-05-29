@@ -8,19 +8,20 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import case, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Item, Operation, PickingTask, ScannerDevice, ScannerLoginSession, Stock
+from app.models import Item, Operation, PickingBatch, PickingTask, ScannerDevice, ScannerLoginSession, Stock
 from app.schemas import (
     ItemCreate,
     ItemOut,
     IssueRequest,
     MoveRequest,
     OperationOut,
+    PickingBatchOut,
     PickingCompleteRequest,
     PickingImportOut,
     PickingTaskOut,
@@ -33,7 +34,7 @@ from app.schemas import (
 from app.security import require_api_key
 from app.services import WmsError, complete_picking_task, create_item, issue_stock, move_stock, receive_stock
 
-APP_VERSION = "20260529-2"
+APP_VERSION = "20260529-3"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -69,6 +70,9 @@ else:
 
 if "picking_tasks" not in inspector.get_table_names():
     PickingTask.__table__.create(bind=engine)
+
+if "picking_batches" not in inspector.get_table_names():
+    PickingBatch.__table__.create(bind=engine)
 
 app = FastAPI(title="WMS Zebra API", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -367,21 +371,59 @@ async def import_picking(request: Request, db: Session = Depends(get_db)) -> Pic
     try:
         rows = parse_picking_file(filename, content)
         batch_id = uuid4().hex[:12].upper()
+        db.add(PickingBatch(batch_id=batch_id, source_filename=filename[:240]))
         created, blocked = create_picking_tasks(db, batch_id, rows)
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PickingImportOut(batch_id=batch_id, created=created, blocked=blocked)
 
 
+@app.get("/api/picking/batches", response_model=list[PickingBatchOut], dependencies=[Depends(require_api_key)])
+def list_picking_batches(db: Session = Depends(get_db)) -> list[PickingBatchOut]:
+    task_rows = db.execute(
+        select(
+            PickingTask.batch_id,
+            func.count(PickingTask.id),
+            func.sum(case((PickingTask.source_location.is_not(None), 1), else_=0)),
+            func.sum(case((PickingTask.status == "done", 1), else_=0)),
+            func.max(PickingTask.created_at),
+        )
+        .group_by(PickingTask.batch_id)
+        .order_by(func.max(PickingTask.created_at).desc())
+    ).all()
+    batch_ids = [row[0] for row in task_rows]
+    batch_by_id = {}
+    if batch_ids:
+        batch_by_id = {
+            batch.batch_id: batch
+            for batch in db.scalars(select(PickingBatch).where(PickingBatch.batch_id.in_(batch_ids)))
+        }
+    return [
+        picking_batch_out(
+            batch_id=row[0],
+            source_filename=batch_by_id[row[0]].source_filename if row[0] in batch_by_id else None,
+            total_tasks=int(row[1] or 0),
+            assigned_tasks=int(row[2] or 0),
+            done_tasks=int(row[3] or 0),
+            created_at=batch_by_id[row[0]].created_at if row[0] in batch_by_id else row[4],
+        )
+        for row in task_rows
+    ]
+
+
 @app.get("/api/picking/tasks", response_model=list[PickingTaskOut], dependencies=[Depends(require_api_key)])
 def list_picking_tasks(
     status: str | None = Query(default=None),
+    batch_id: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[PickingTaskOut]:
-    query = select(PickingTask).order_by(PickingTask.id.desc()).limit(limit)
+    query = select(PickingTask)
     if status:
-        query = select(PickingTask).where(PickingTask.status == status).order_by(PickingTask.id.desc()).limit(limit)
+        query = query.where(PickingTask.status == status)
+    if batch_id:
+        query = query.where(PickingTask.batch_id == batch_id)
+    query = query.order_by(PickingTask.id if batch_id else PickingTask.id.desc()).limit(limit)
     tasks = list(db.scalars(query))
     return [picking_task_out(db, task) for task in tasks]
 
@@ -564,6 +606,37 @@ def get_picking_value(row: dict[str, str], field: str) -> str:
         if value:
             return value
     return ""
+
+
+def picking_batch_out(
+    batch_id: str,
+    source_filename: str | None,
+    total_tasks: int,
+    assigned_tasks: int,
+    done_tasks: int,
+    created_at: object,
+) -> PickingBatchOut:
+    if total_tasks <= 0:
+        status = "oczekuje"
+        progress_percent = 0
+    elif done_tasks >= total_tasks:
+        status = "zebrany"
+        progress_percent = 100
+    elif done_tasks > 0:
+        status = "w trakcie"
+        progress_percent = round(done_tasks * 100 / total_tasks)
+    else:
+        status = "oczekuje"
+        progress_percent = 0
+    return PickingBatchOut(
+        batch_id=batch_id,
+        source_filename=source_filename,
+        total_tasks=total_tasks,
+        assigned_tasks=assigned_tasks,
+        status=status,
+        progress_percent=progress_percent,
+        created_at=created_at,
+    )
 
 
 def picking_task_out(db: Session, task: PickingTask) -> PickingTaskOut:
