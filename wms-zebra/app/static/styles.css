@@ -571,6 +571,36 @@ label input {
   text-align: center;
 }
 
+.picking-batch-list {
+  display: grid;
+  gap: 8px;
+}
+
+.picking-batch-button {
+  display: grid;
+  justify-items: start;
+  min-height: 74px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.picking-batch-button strong {
+  font-size: 20px;
+}
+
+.picking-batch-button span {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+}
+
+.empty-batch {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+  color: var(--muted);
+}
+
 .scan-capture {
   position: fixed;
   left: -1000px;
