@@ -95,6 +95,16 @@ class PickingImportOut(BaseModel):
     blocked: int
 
 
+class PickingBatchOut(BaseModel):
+    batch_id: str
+    source_filename: str | None = None
+    total_tasks: int
+    assigned_tasks: int
+    status: str
+    progress_percent: int
+    created_at: datetime | None = None
+
+
 class PickingTaskOut(BaseModel):
     id: int
     batch_id: str
