@@ -6,9 +6,11 @@ const loginView = document.querySelector("#loginView");
 const operationView = document.querySelector("#operationView");
 const receivePanel = document.querySelector("#receivePanel");
 const movePanel = document.querySelector("#movePanel");
+const pickingPanel = document.querySelector("#pickingPanel");
 const loginButton = document.querySelector("#loginButton");
 const chooseReceive = document.querySelector("#chooseReceive");
 const chooseMove = document.querySelector("#chooseMove");
+const choosePicking = document.querySelector("#choosePicking");
 const changeOperator = document.querySelector("#changeOperator");
 const receiveQtyButton = document.querySelector("#receiveQtyButton");
 const receiveQtyValue = document.querySelector("#receiveQtyValue");
@@ -19,6 +21,9 @@ const sessionScannerId = document.querySelector("#sessionScannerId");
 const sessionOperator = document.querySelector("#sessionOperator");
 const receiveResult = document.querySelector("#receiveResult");
 const moveResult = document.querySelector("#moveResult");
+const pickingResult = document.querySelector("#pickingResult");
+const pickingProduct = document.querySelector("#pickingProduct");
+const pickingDetails = document.querySelector("#pickingDetails");
 const deviceUid = getOrCreateDeviceUid();
 
 let mode = null;
@@ -31,8 +36,12 @@ const state = {
   receiveLocation: "",
   moveSku: "",
   moveFrom: "",
-  moveTo: ""
+  moveTo: "",
+  pickingSku: "",
+  pickingFrom: "",
+  pickingTo: ""
 };
+let activePickingTask = null;
 
 const params = new URLSearchParams(window.location.search);
 const urlApiKey = params.get("key") || params.get("api_key") || "";
@@ -56,6 +65,7 @@ operatorName.addEventListener("keydown", (event) => {
 loginButton.addEventListener("click", login);
 chooseReceive.addEventListener("click", openReceive);
 chooseMove.addEventListener("click", openMove);
+choosePicking.addEventListener("click", openPicking);
 changeOperator.addEventListener("click", showLogin);
 newScannerIdButton.addEventListener("click", assignNewScannerId);
 
@@ -88,6 +98,9 @@ receiveQtyButton.addEventListener("click", () => {
 document.querySelector("#receiveReset").addEventListener("click", resetReceive);
 document.querySelector("#moveReset").addEventListener("click", resetMove);
 document.querySelector("#moveSubmit").addEventListener("click", submitMove);
+document.querySelector("#loadPickingTask").addEventListener("click", loadPickingTask);
+document.querySelector("#completePickingTask").addEventListener("click", submitPicking);
+document.querySelector("#pickingReset").addEventListener("click", resetPickingScans);
 
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey || event.altKey || event.metaKey) return;
@@ -214,10 +227,22 @@ function openMove() {
   setStatus("Zeskanuj produkt.", false);
 }
 
+async function openPicking() {
+  if (!canWork()) return;
+  resetPickingScans(false);
+  clearResult(pickingResult);
+  hideWorkflows();
+  mode = "picking";
+  pickingPanel.classList.remove("hidden");
+  setActiveTarget("pickingSku");
+  await loadPickingTask();
+}
+
 function hideWorkflows() {
   operationView.classList.add("hidden");
   receivePanel.classList.add("hidden");
   movePanel.classList.add("hidden");
+  pickingPanel.classList.add("hidden");
   mode = null;
 }
 
@@ -259,6 +284,20 @@ async function handleScan(value) {
     }
     if (activeTarget === "receiveLocation") {
       await submitReceive();
+    }
+    return;
+  }
+
+  if (mode === "picking") {
+    clearResult(pickingResult);
+    if (activeTarget === "pickingSku") {
+      setActiveTarget("pickingFrom");
+      setStatus("Zeskanuj lokalizacje zrodlowa.", false);
+    } else if (activeTarget === "pickingFrom") {
+      setActiveTarget("pickingTo");
+      setStatus("Zeskanuj lokalizacje docelowa.", false);
+    } else if (activeTarget === "pickingTo") {
+      await submitPicking();
     }
     return;
   }
@@ -355,6 +394,66 @@ async function send(url, body, resultBox = null) {
   return { ok: true, payload };
 }
 
+async function loadPickingTask() {
+  if (!canWork()) return;
+  setStatus("Pobieranie zadania picking...", false);
+  const response = await fetch("/api/picking/next", {
+    headers: { "X-API-Key": apiKey.value }
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = payload?.detail || "Nie mozna pobrac zadania picking.";
+    setStatus(message, true);
+    setResult(pickingResult, message, true);
+    return;
+  }
+  activePickingTask = payload;
+  resetPickingScans(false);
+  updatePickingTaskDisplay();
+  if (!activePickingTask) {
+    setStatus("Brak zadan picking do wykonania.", false);
+    setResult(pickingResult, "Brak zadan picking do wykonania.", false);
+    return;
+  }
+  setStatus("Zeskanuj produkt z zadania.", false);
+  setActiveTarget("pickingSku");
+}
+
+async function submitPicking() {
+  if (!canWork()) return;
+  if (!activePickingTask) {
+    setStatus("Pobierz zadanie picking.", true);
+    setResult(pickingResult, "Nie wykonano pickingu: brak aktywnego zadania.", true);
+    return;
+  }
+  if (!state.pickingSku || !state.pickingFrom || !state.pickingTo) {
+    setStatus("Zeskanuj produkt, lokalizacje zrodlowa i docelowa.", true);
+    setResult(pickingResult, "Nie wykonano pickingu: brakuje skanow.", true);
+    return;
+  }
+  const result = await send("/api/picking/complete", {
+    task_id: activePickingTask.id,
+    sku: state.pickingSku,
+    source_location: state.pickingFrom,
+    target_location: state.pickingTo,
+    scanner_id: scannerId.value.trim(),
+    operator: operatorName.value.trim() || null
+  }, pickingResult);
+
+  if (result.ok) {
+    const productName = activePickingTask.name || activePickingTask.sku;
+    setResult(
+      pickingResult,
+      `OK: picking ${activePickingTask.quantity} szt. produktu ${productName} z ${activePickingTask.source_location} do ${activePickingTask.target_location}.`,
+      false
+    );
+    setStatus("Picking zakonczony.", false);
+    activePickingTask = null;
+    resetPickingScans(false, false);
+    updatePickingTaskDisplay();
+  }
+}
+
 async function ensureScannerId() {
   if (scannerId.value.trim() || !apiKey.value.trim()) return;
   await registerScannerId(false);
@@ -447,12 +546,35 @@ function resetMove(showMessage = true) {
   if (showMessage) setStatus("Wyczyszczono przesuniecie.", false);
 }
 
+function resetPickingScans(showMessage = true, clearMessage = true) {
+  state.pickingSku = "";
+  state.pickingFrom = "";
+  state.pickingTo = "";
+  if (clearMessage) clearResult(pickingResult);
+  setActiveTarget("pickingSku");
+  updateDisplays();
+  if (showMessage) setStatus("Wyczyszczono skany picking.", false);
+}
+
 function updateDisplays() {
   setText("#receiveSkuValue", state.receiveSku || "Zeskanuj produkt");
   setText("#receiveLocationValue", state.receiveLocation || "Zeskanuj lokalizacje");
   setText("#moveSkuValue", state.moveSku || "Zeskanuj produkt");
   setText("#moveFromValue", state.moveFrom || "Zeskanuj lokalizacje zrodlowa");
   setText("#moveToValue", state.moveTo || "Zeskanuj lokalizacje docelowa");
+  setText("#pickingSkuValue", state.pickingSku || "Zeskanuj produkt");
+  setText("#pickingFromValue", state.pickingFrom || "Zeskanuj lokalizacje zrodlowa");
+  setText("#pickingToValue", state.pickingTo || "Zeskanuj lokalizacje docelowa");
+}
+
+function updatePickingTaskDisplay() {
+  if (!activePickingTask) {
+    pickingProduct.textContent = "Brak aktywnego zadania";
+    pickingDetails.textContent = "Pobierz kolejne zadanie.";
+    return;
+  }
+  pickingProduct.textContent = activePickingTask.name || activePickingTask.sku;
+  pickingDetails.textContent = `${activePickingTask.quantity} szt. | z ${activePickingTask.source_location} do ${activePickingTask.target_location}`;
 }
 
 function setText(selector, value) {
