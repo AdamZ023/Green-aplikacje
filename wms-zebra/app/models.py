@@ -47,6 +47,22 @@ class Operation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
+class PickingTask(Base):
+    __tablename__ = "picking_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(120), index=True)
+    sku: Mapped[str] = mapped_column(String(80), index=True)
+    source_location: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    target_location: Mapped[str] = mapped_column(String(80), index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    scanner_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    operator: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    picked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class ScannerDevice(Base):
     __tablename__ = "scanner_devices"
 
