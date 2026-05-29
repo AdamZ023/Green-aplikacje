@@ -2,15 +2,20 @@ const apiKeyInput = document.querySelector("#apiKey");
 const warehouseRows = document.querySelector("#warehouseRows");
 const logisticsRows = document.querySelector("#logisticsRows");
 const historyRows = document.querySelector("#historyRows");
+const pickingRows = document.querySelector("#pickingRows");
+const pickingFile = document.querySelector("#pickingFile");
+const pickingImportStatus = document.querySelector("#pickingImportStatus");
 const views = {
   warehouse: document.querySelector("#warehouseView"),
   logistics: document.querySelector("#logisticsView"),
-  history: document.querySelector("#operationHistoryView")
+  history: document.querySelector("#operationHistoryView"),
+  picking: document.querySelector("#pickingView")
 };
 const buttons = {
   warehouse: document.querySelector("#warehouseViewButton"),
   logistics: document.querySelector("#logisticsViewButton"),
-  history: document.querySelector("#historyViewButton")
+  history: document.querySelector("#historyViewButton"),
+  picking: document.querySelector("#pickingViewButton")
 };
 const historyFilterButtons = {
   all: document.querySelector("#historyAllFilter"),
@@ -31,10 +36,12 @@ apiKeyInput.addEventListener("change", () => {
 buttons.warehouse.addEventListener("click", () => showView("warehouse"));
 buttons.logistics.addEventListener("click", () => showView("logistics"));
 buttons.history.addEventListener("click", () => showView("history"));
+buttons.picking.addEventListener("click", () => showView("picking"));
 historyFilterButtons.all.addEventListener("click", () => setHistoryFilter("all"));
 historyFilterButtons.receive.addEventListener("click", () => setHistoryFilter("receive"));
 historyFilterButtons.move.addEventListener("click", () => setHistoryFilter("move"));
 document.querySelector("#refresh").addEventListener("click", loadAll);
+document.querySelector("#pickingImportButton").addEventListener("click", importPicking);
 
 function showView(name) {
   activeView = name;
@@ -62,7 +69,8 @@ async function loadAll() {
   await Promise.all([
     loadWarehouseStock(),
     loadLogisticsStock(),
-    loadOperationHistory()
+    loadOperationHistory(),
+    loadPickingTasks()
   ]);
 }
 
@@ -181,6 +189,67 @@ async function loadOperationHistory() {
   }).join("");
 }
 
+async function loadPickingTasks() {
+  if (!pickingRows.children.length) {
+    pickingRows.innerHTML = "<tr><td colspan=\"9\">Ladowanie...</td></tr>";
+  }
+  const response = await fetch("/api/picking/tasks?limit=200", {
+    headers: { "X-API-Key": apiKeyInput.value }
+  });
+  if (!response.ok) {
+    pickingRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
+    return;
+  }
+  const tasks = await response.json();
+  if (!tasks.length) {
+    pickingRows.innerHTML = "<tr><td colspan=\"9\">Brak zadan picking.</td></tr>";
+    return;
+  }
+  pickingRows.innerHTML = tasks.map((task) => `
+    <tr>
+      <td>${escapeHtml(formatPickingStatus(task.status))}</td>
+      <td>${escapeHtml(task.barcode || "")}</td>
+      <td>${escapeHtml(task.sku)}</td>
+      <td>${escapeHtml(task.name || "")}</td>
+      <td>${escapeHtml(task.source_location || "BRAK STANU")}</td>
+      <td>${escapeHtml(task.target_location)}</td>
+      <td>${task.quantity}</td>
+      <td>${escapeHtml(task.operator || "")}</td>
+      <td>${escapeHtml(task.scanner_id || "")}</td>
+    </tr>
+  `).join("");
+}
+
+async function importPicking() {
+  const file = pickingFile.files[0];
+  if (!file) {
+    pickingImportStatus.textContent = "Wybierz plik CSV albo XLSX.";
+    pickingImportStatus.classList.add("error");
+    return;
+  }
+  pickingImportStatus.textContent = "Import pickingu...";
+  pickingImportStatus.classList.remove("error");
+  const response = await fetch("/api/picking/import", {
+    method: "POST",
+    headers: {
+      "X-API-Key": apiKeyInput.value,
+      "X-Filename": file.name,
+      "Content-Type": "application/octet-stream"
+    },
+    body: await file.arrayBuffer()
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    pickingImportStatus.textContent = payload.detail || "Blad importu pickingu.";
+    pickingImportStatus.classList.add("error");
+    return;
+  }
+  pickingImportStatus.textContent = `Utworzono picking ${payload.batch_id}: ${payload.created} pozycji, blokady: ${payload.blocked}.`;
+  pickingImportStatus.classList.remove("error");
+  pickingFile.value = "";
+  await loadPickingTasks();
+}
+
 function emptyHistoryMessage() {
   return {
     all: "Brak historii operacji.",
@@ -235,7 +304,16 @@ function formatOperation(value) {
   return {
     receive: "Przyjecie",
     issue: "Wydanie",
-    move: "Przesuniecie"
+    move: "Przesuniecie",
+    picking: "Picking"
+  }[value] || value;
+}
+
+function formatPickingStatus(value) {
+  return {
+    pending: "Do pobrania",
+    done: "Zrobione",
+    blocked: "Brak stanu"
   }[value] || value;
 }
 
