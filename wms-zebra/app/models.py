@@ -68,6 +68,7 @@ class PickingTask(Base):
     status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
     scanner_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     operator: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     picked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
