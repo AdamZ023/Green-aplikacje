@@ -24,6 +24,8 @@ const moveResult = document.querySelector("#moveResult");
 const pickingResult = document.querySelector("#pickingResult");
 const pickingProduct = document.querySelector("#pickingProduct");
 const pickingDetails = document.querySelector("#pickingDetails");
+const pickingDestination = document.querySelector("#pickingDestination");
+const pickingDestinationValue = document.querySelector("#pickingDestinationValue");
 const deviceUid = getOrCreateDeviceUid();
 
 let mode = null;
@@ -38,8 +40,7 @@ const state = {
   moveFrom: "",
   moveTo: "",
   pickingSku: "",
-  pickingFrom: "",
-  pickingTo: ""
+  pickingFrom: ""
 };
 let activePickingTask = null;
 
@@ -234,7 +235,7 @@ async function openPicking() {
   hideWorkflows();
   mode = "picking";
   pickingPanel.classList.remove("hidden");
-  setActiveTarget("pickingSku");
+  setActiveTarget("pickingFrom");
   await loadPickingTask();
 }
 
@@ -290,13 +291,11 @@ async function handleScan(value) {
 
   if (mode === "picking") {
     clearResult(pickingResult);
-    if (activeTarget === "pickingSku") {
-      setActiveTarget("pickingFrom");
-      setStatus("Zeskanuj lokalizacje zrodlowa.", false);
-    } else if (activeTarget === "pickingFrom") {
-      setActiveTarget("pickingTo");
-      setStatus("Zeskanuj lokalizacje docelowa.", false);
-    } else if (activeTarget === "pickingTo") {
+    if (activeTarget === "pickingFrom") {
+      hidePickingDestination();
+      setActiveTarget("pickingSku");
+      setStatus("Zeskanuj produkt.", false);
+    } else if (activeTarget === "pickingSku") {
       await submitPicking();
     }
     return;
@@ -415,8 +414,8 @@ async function loadPickingTask() {
     setResult(pickingResult, "Brak zadan picking do wykonania.", false);
     return;
   }
-  setStatus("Zeskanuj produkt z zadania.", false);
-  setActiveTarget("pickingSku");
+  setStatus("Zeskanuj lokalizacje zrodlowa.", false);
+  setActiveTarget("pickingFrom");
 }
 
 async function submitPicking() {
@@ -426,8 +425,8 @@ async function submitPicking() {
     setResult(pickingResult, "Nie wykonano pickingu: brak aktywnego zadania.", true);
     return;
   }
-  if (!state.pickingSku || !state.pickingFrom || !state.pickingTo) {
-    setStatus("Zeskanuj produkt, lokalizacje zrodlowa i docelowa.", true);
+  if (!state.pickingSku || !state.pickingFrom) {
+    setStatus("Zeskanuj lokalizacje zrodlowa i produkt.", true);
     setResult(pickingResult, "Nie wykonano pickingu: brakuje skanow.", true);
     return;
   }
@@ -435,7 +434,7 @@ async function submitPicking() {
     task_id: activePickingTask.id,
     sku: state.pickingSku,
     source_location: state.pickingFrom,
-    target_location: state.pickingTo,
+    target_location: activePickingTask.target_location,
     scanner_id: scannerId.value.trim(),
     operator: operatorName.value.trim() || null
   }, pickingResult);
@@ -448,9 +447,11 @@ async function submitPicking() {
       false
     );
     setStatus("Picking zakonczony.", false);
+    showPickingDestination(activePickingTask.target_location);
     activePickingTask = null;
     resetPickingScans(false, false);
     updatePickingTaskDisplay();
+    await loadPickingTask();
   }
 }
 
@@ -549,9 +550,9 @@ function resetMove(showMessage = true) {
 function resetPickingScans(showMessage = true, clearMessage = true) {
   state.pickingSku = "";
   state.pickingFrom = "";
-  state.pickingTo = "";
   if (clearMessage) clearResult(pickingResult);
-  setActiveTarget("pickingSku");
+  if (clearMessage) hidePickingDestination();
+  setActiveTarget("pickingFrom");
   updateDisplays();
   if (showMessage) setStatus("Wyczyszczono skany picking.", false);
 }
@@ -564,7 +565,6 @@ function updateDisplays() {
   setText("#moveToValue", state.moveTo || "Zeskanuj lokalizacje docelowa");
   setText("#pickingSkuValue", state.pickingSku || "Zeskanuj produkt");
   setText("#pickingFromValue", state.pickingFrom || "Zeskanuj lokalizacje zrodlowa");
-  setText("#pickingToValue", state.pickingTo || "Zeskanuj lokalizacje docelowa");
 }
 
 function updatePickingTaskDisplay() {
@@ -575,6 +575,15 @@ function updatePickingTaskDisplay() {
   }
   pickingProduct.textContent = activePickingTask.name || activePickingTask.sku;
   pickingDetails.textContent = `${activePickingTask.quantity} szt. | z ${activePickingTask.source_location} do ${activePickingTask.target_location}`;
+}
+
+function showPickingDestination(value) {
+  pickingDestinationValue.textContent = value || "";
+  pickingDestination.classList.toggle("hidden", !value);
+}
+
+function hidePickingDestination() {
+  showPickingDestination("");
 }
 
 function setText(selector, value) {
