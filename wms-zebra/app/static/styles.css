@@ -153,6 +153,18 @@ button.secondary:hover,
   margin-bottom: 10px;
 }
 
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.filter-bar button {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
 .operation-grid,
 .mode-tabs {
   display: grid;
