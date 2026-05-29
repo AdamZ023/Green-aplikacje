@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260529-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260529-6">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260529-3" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260529-3" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260529-6" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260529-6" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -26,7 +26,7 @@
       <button id="logisticsViewButton" type="button">Stan Logistyczny</button>
       <button id="historyViewButton" type="button">Historia operacji</button>
       <button id="pickingViewButton" type="button">Picking</button>
-      <a class="button-link" href="/zebra-v2?v=20260529-3">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260529-6">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -128,6 +128,7 @@
           <table class="picking-task-table">
             <thead>
               <tr>
+                <th>Skan</th>
                 <th>Status</th>
                 <th>EAN</th>
                 <th>Indeks</th>
@@ -145,6 +146,6 @@
       </section>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260529-3"></script>
+  <script src="/static/dashboard.js?v=20260529-6"></script>
 </body>
 </html>
