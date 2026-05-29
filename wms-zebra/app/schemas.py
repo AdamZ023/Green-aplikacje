@@ -117,8 +117,15 @@ class PickingTaskOut(BaseModel):
     status: str
     scanner_id: str | None = None
     operator: str | None = None
+    assigned_at: datetime | None = None
     picked_at: datetime | None = None
     created_at: datetime
+
+
+class PickingNextRequest(BaseModel):
+    batch_id: str = Field(min_length=1, max_length=120)
+    scanner_id: str = Field(min_length=1, max_length=120)
+    operator: str | None = Field(default=None, max_length=120)
 
 
 class PickingCompleteRequest(BaseModel):
