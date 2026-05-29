@@ -265,6 +265,7 @@ function flushScan() {
 }
 
 function focusScanCapture() {
+  if (navigator.maxTouchPoints > 0) return;
   setTimeout(() => {
     const active = document.activeElement;
     if (active === apiKey || active === operatorName || active === moveQuantity) return;
@@ -574,14 +575,14 @@ function updatePickingTaskDisplay() {
     return;
   }
   pickingProduct.textContent = activePickingTask.name || activePickingTask.sku;
-  pickingDetails.textContent = `${activePickingTask.quantity} szt. | z ${activePickingTask.source_location} do ${activePickingTask.target_location}`;
+  pickingDetails.textContent = `Picking ${activePickingTask.batch_id} | ${activePickingTask.quantity} szt. | z ${activePickingTask.source_location} do ${activePickingTask.target_location}`;
 }
 
 function showPickingDestination(value) {
   pickingDestinationValue.textContent = value || "";
   pickingDestination.classList.toggle("hidden", !value);
   if (value) {
-    speak(`Karton docelowy ${value}`);
+    speak(value);
   }
 }
 
