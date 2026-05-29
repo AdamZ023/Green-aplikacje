@@ -12,8 +12,14 @@ const buttons = {
   logistics: document.querySelector("#logisticsViewButton"),
   history: document.querySelector("#historyViewButton")
 };
+const historyFilterButtons = {
+  all: document.querySelector("#historyAllFilter"),
+  receive: document.querySelector("#historyReceiveFilter"),
+  move: document.querySelector("#historyMoveFilter")
+};
 const savedKey = localStorage.getItem("wmsApiKey") || "";
 let activeView = localStorage.getItem("wmsDashboardView") || "warehouse";
+let activeHistoryFilter = localStorage.getItem("wmsHistoryFilter") || "move";
 
 apiKeyInput.value = savedKey;
 
@@ -25,6 +31,9 @@ apiKeyInput.addEventListener("change", () => {
 buttons.warehouse.addEventListener("click", () => showView("warehouse"));
 buttons.logistics.addEventListener("click", () => showView("logistics"));
 buttons.history.addEventListener("click", () => showView("history"));
+historyFilterButtons.all.addEventListener("click", () => setHistoryFilter("all"));
+historyFilterButtons.receive.addEventListener("click", () => setHistoryFilter("receive"));
+historyFilterButtons.move.addEventListener("click", () => setHistoryFilter("move"));
 document.querySelector("#refresh").addEventListener("click", loadAll);
 
 function showView(name) {
@@ -33,6 +42,19 @@ function showView(name) {
   for (const [viewName, view] of Object.entries(views)) {
     view.classList.toggle("hidden", viewName !== name);
     buttons[viewName].classList.toggle("secondary", viewName !== name);
+  }
+}
+
+function setHistoryFilter(name) {
+  activeHistoryFilter = name;
+  localStorage.setItem("wmsHistoryFilter", name);
+  updateHistoryFilterButtons();
+  loadOperationHistory();
+}
+
+function updateHistoryFilterButtons() {
+  for (const [name, button] of Object.entries(historyFilterButtons)) {
+    button.classList.toggle("secondary", name !== activeHistoryFilter);
   }
 }
 
@@ -120,8 +142,9 @@ async function loadOperationHistory() {
   }
 
   const headers = { "X-API-Key": apiKeyInput.value };
+  const operationQuery = activeHistoryFilter === "all" ? "" : `&operation_type=${activeHistoryFilter}`;
   const [operationsResponse, itemsResponse] = await Promise.all([
-    fetch("/api/operations?limit=200&operation_type=move", { headers }),
+    fetch(`/api/operations?limit=200${operationQuery}`, { headers }),
     fetch("/api/items", { headers })
   ]);
 
@@ -135,7 +158,7 @@ async function loadOperationHistory() {
   const itemBySku = new Map(items.map((item) => [item.sku, item]));
 
   if (!operations.length) {
-    historyRows.innerHTML = "<tr><td colspan=\"10\">Brak historii przesuniec.</td></tr>";
+    historyRows.innerHTML = `<tr><td colspan="10">${emptyHistoryMessage()}</td></tr>`;
     return;
   }
 
@@ -156,6 +179,14 @@ async function loadOperationHistory() {
       </tr>
     `;
   }).join("");
+}
+
+function emptyHistoryMessage() {
+  return {
+    all: "Brak historii operacji.",
+    receive: "Brak historii przyjec.",
+    move: "Brak historii przesuniec."
+  }[activeHistoryFilter] || "Brak historii operacji.";
 }
 
 function escapeHtml(value) {
@@ -211,6 +242,10 @@ function formatOperation(value) {
 if (!views[activeView]) {
   activeView = "warehouse";
 }
+if (!historyFilterButtons[activeHistoryFilter]) {
+  activeHistoryFilter = "move";
+}
+updateHistoryFilterButtons();
 showView(activeView);
 loadAll();
 setInterval(loadAll, 3000);
