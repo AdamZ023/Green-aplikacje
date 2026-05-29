@@ -99,7 +99,7 @@ receiveQtyButton.addEventListener("click", () => {
 document.querySelector("#receiveReset").addEventListener("click", resetReceive);
 document.querySelector("#moveReset").addEventListener("click", resetMove);
 document.querySelector("#moveSubmit").addEventListener("click", submitMove);
-document.querySelector("#loadPickingTask").addEventListener("click", loadPickingTask);
+document.querySelector("#loadPickingTask").addEventListener("click", () => loadPickingTask());
 document.querySelector("#completePickingTask").addEventListener("click", submitPicking);
 document.querySelector("#pickingReset").addEventListener("click", resetPickingScans);
 
