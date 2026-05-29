@@ -24,6 +24,7 @@ from app.schemas import (
     PickingBatchOut,
     PickingCompleteRequest,
     PickingImportOut,
+    PickingNextRequest,
     PickingTaskOut,
     ReceiveRequest,
     ScannerRegistrationOut,
@@ -32,9 +33,17 @@ from app.schemas import (
     WarehouseStockOut,
 )
 from app.security import require_api_key
-from app.services import WmsError, complete_picking_task, create_item, issue_stock, move_stock, receive_stock
+from app.services import (
+    WmsError,
+    complete_picking_task,
+    create_item,
+    issue_stock,
+    move_stock,
+    receive_stock,
+    scan_timestamp,
+)
 
-APP_VERSION = "20260529-3"
+APP_VERSION = "20260529-5"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -70,6 +79,13 @@ else:
 
 if "picking_tasks" not in inspector.get_table_names():
     PickingTask.__table__.create(bind=engine)
+else:
+    picking_columns = {column["name"] for column in inspector.get_columns("picking_tasks")}
+    if "assigned_at" not in picking_columns:
+        assigned_at_type = "TIMESTAMP WITH TIME ZONE" if engine.url.get_backend_name() == "postgresql" else "TIMESTAMP"
+        with engine.begin() as connection:
+            connection.execute(text(f"ALTER TABLE picking_tasks ADD COLUMN assigned_at {assigned_at_type}"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_picking_tasks_assigned_at ON picking_tasks (assigned_at)"))
 
 if "picking_batches" not in inspector.get_table_names():
     PickingBatch.__table__.create(bind=engine)
@@ -386,6 +402,7 @@ def list_picking_batches(db: Session = Depends(get_db)) -> list[PickingBatchOut]
             func.count(PickingTask.id),
             func.sum(case((PickingTask.source_location.is_not(None), 1), else_=0)),
             func.sum(case((PickingTask.status == "done", 1), else_=0)),
+            func.sum(case((PickingTask.status == "assigned", 1), else_=0)),
             func.max(PickingTask.created_at),
         )
         .group_by(PickingTask.batch_id)
@@ -405,7 +422,8 @@ def list_picking_batches(db: Session = Depends(get_db)) -> list[PickingBatchOut]
             total_tasks=int(row[1] or 0),
             assigned_tasks=int(row[2] or 0),
             done_tasks=int(row[3] or 0),
-            created_at=batch_by_id[row[0]].created_at if row[0] in batch_by_id else row[4],
+            active_tasks=int(row[4] or 0),
+            created_at=batch_by_id[row[0]].created_at if row[0] in batch_by_id else row[5],
         )
         for row in task_rows
     ]
@@ -428,14 +446,40 @@ def list_picking_tasks(
     return [picking_task_out(db, task) for task in tasks]
 
 
-@app.get("/api/picking/next", response_model=PickingTaskOut | None, dependencies=[Depends(require_api_key)])
-def next_picking_task(db: Session = Depends(get_db)) -> PickingTaskOut | None:
-    task = db.scalar(
+@app.post("/api/picking/next", response_model=PickingTaskOut | None, dependencies=[Depends(require_api_key)])
+def next_picking_task(payload: PickingNextRequest, db: Session = Depends(get_db)) -> PickingTaskOut | None:
+    existing_task = db.scalar(
         select(PickingTask)
-        .where(PickingTask.status == "pending", PickingTask.source_location.is_not(None))
+        .where(
+            PickingTask.batch_id == payload.batch_id,
+            PickingTask.status == "assigned",
+            PickingTask.scanner_id == payload.scanner_id,
+            PickingTask.source_location.is_not(None),
+        )
         .order_by(PickingTask.id)
         .limit(1)
     )
+    if existing_task:
+        return picking_task_out(db, existing_task)
+
+    task = db.scalar(
+        select(PickingTask)
+        .where(
+            PickingTask.batch_id == payload.batch_id,
+            PickingTask.status == "pending",
+            PickingTask.source_location.is_not(None),
+        )
+        .order_by(PickingTask.id)
+        .with_for_update(skip_locked=True)
+        .limit(1)
+    )
+    if task:
+        task.status = "assigned"
+        task.scanner_id = payload.scanner_id
+        task.operator = payload.operator
+        task.assigned_at = scan_timestamp()
+        db.commit()
+        db.refresh(task)
     return picking_task_out(db, task) if task else None
 
 
@@ -614,6 +658,7 @@ def picking_batch_out(
     total_tasks: int,
     assigned_tasks: int,
     done_tasks: int,
+    active_tasks: int,
     created_at: object,
 ) -> PickingBatchOut:
     if total_tasks <= 0:
@@ -622,7 +667,7 @@ def picking_batch_out(
     elif done_tasks >= total_tasks:
         status = "zebrany"
         progress_percent = 100
-    elif done_tasks > 0:
+    elif done_tasks > 0 or active_tasks > 0:
         status = "w trakcie"
         progress_percent = round(done_tasks * 100 / total_tasks)
     else:
@@ -653,6 +698,7 @@ def picking_task_out(db: Session, task: PickingTask) -> PickingTaskOut:
         status=task.status,
         scanner_id=task.scanner_id,
         operator=task.operator,
+        assigned_at=task.assigned_at,
         picked_at=task.picked_at,
         created_at=task.created_at,
     )
