@@ -393,7 +393,7 @@ async function send(url, body, resultBox = null) {
   return { ok: true, payload };
 }
 
-async function loadPickingTask() {
+async function loadPickingTask(preserveDestination = false) {
   if (!canWork()) return;
   setStatus("Pobieranie zadania picking...", false);
   const response = await fetch("/api/picking/next", {
@@ -407,7 +407,7 @@ async function loadPickingTask() {
     return;
   }
   activePickingTask = payload;
-  resetPickingScans(false);
+  resetPickingScans(false, !preserveDestination);
   updatePickingTaskDisplay();
   if (!activePickingTask) {
     setStatus("Brak zadan picking do wykonania.", false);
@@ -451,7 +451,7 @@ async function submitPicking() {
     activePickingTask = null;
     resetPickingScans(false, false);
     updatePickingTaskDisplay();
-    await loadPickingTask();
+    await loadPickingTask(true);
   }
 }
 
@@ -580,10 +580,23 @@ function updatePickingTaskDisplay() {
 function showPickingDestination(value) {
   pickingDestinationValue.textContent = value || "";
   pickingDestination.classList.toggle("hidden", !value);
+  if (value) {
+    speak(`Karton docelowy ${value}`);
+  }
 }
 
 function hidePickingDestination() {
   showPickingDestination("");
+}
+
+function speak(message) {
+  if (!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.lang = "pl-PL";
+  utterance.rate = 0.9;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
 }
 
 function setText(selector, value) {
