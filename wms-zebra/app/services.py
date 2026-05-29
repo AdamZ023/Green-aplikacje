@@ -156,8 +156,10 @@ def complete_picking_task(
     task = db.scalar(select(PickingTask).where(PickingTask.id == task_id).with_for_update())
     if not task:
         raise WmsError("Nie znaleziono zadania picking.")
-    if task.status != "pending":
+    if task.status not in {"pending", "assigned"}:
         raise WmsError("Zadanie picking nie jest juz aktywne.")
+    if task.status == "assigned" and task.scanner_id and task.scanner_id != scanner_id:
+        raise WmsError("Zadanie picking jest przypisane do innego skanera.")
     if not task.source_location:
         raise WmsError("Zadanie nie ma dostepnej lokalizacji zrodlowej.")
 
