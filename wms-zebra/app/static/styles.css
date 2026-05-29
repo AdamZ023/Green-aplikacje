@@ -165,6 +165,23 @@ button.secondary:hover,
   padding: 0 12px;
 }
 
+.upload-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto minmax(240px, 2fr);
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.upload-row output {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.upload-row output.error {
+  color: var(--danger);
+}
+
 .operation-grid,
 .mode-tabs {
   display: grid;
@@ -374,6 +391,48 @@ button.secondary:hover,
 #operationHistoryView th:nth-child(10),
 #operationHistoryView td:nth-child(10) {
   width: 10%;
+}
+
+#pickingView th:nth-child(1),
+#pickingView td:nth-child(1) {
+  width: 9%;
+}
+
+#pickingView th:nth-child(2),
+#pickingView td:nth-child(2) {
+  width: 11%;
+}
+
+#pickingView th:nth-child(3),
+#pickingView td:nth-child(3) {
+  width: 17%;
+}
+
+#pickingView th:nth-child(4),
+#pickingView td:nth-child(4) {
+  width: 23%;
+}
+
+#pickingView th:nth-child(5),
+#pickingView td:nth-child(5),
+#pickingView th:nth-child(6),
+#pickingView td:nth-child(6) {
+  width: 11%;
+}
+
+#pickingView th:nth-child(7),
+#pickingView td:nth-child(7) {
+  width: 5%;
+}
+
+#pickingView th:nth-child(8),
+#pickingView td:nth-child(8) {
+  width: 7%;
+}
+
+#pickingView th:nth-child(9),
+#pickingView td:nth-child(9) {
+  width: 6%;
 }
 
 .history-section {
@@ -598,5 +657,9 @@ body.scanner-body {
   th,
   td {
     padding: 10px 8px;
+  }
+
+  .upload-row {
+    grid-template-columns: 1fr;
   }
 }
