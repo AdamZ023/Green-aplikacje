@@ -175,9 +175,7 @@ def complete_picking_task(
     if source.quantity < task.quantity:
         raise WmsError("Za malo towaru na lokalizacji picking.")
 
-    target = get_or_create_stock(db, item, task.target_location)
     source.quantity -= task.quantity
-    target.quantity += task.quantity
     now = scan_timestamp()
     task.status = "done"
     task.scanner_id = scanner_id
