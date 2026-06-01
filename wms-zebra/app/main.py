@@ -43,7 +43,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260529-5"
+APP_VERSION = "20260601-1"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -63,6 +63,7 @@ CACHE_HEADERS = {
     "Pragma": "no-cache",
     "Expires": "0",
 }
+RESERVED_PICKING_STATUSES = ("pending", "assigned")
 
 Base.metadata.create_all(bind=engine)
 inspector = inspect(engine)
@@ -236,6 +237,7 @@ def add_item(payload: ItemCreate, db: Session = Depends(get_db)) -> Item:
 
 @app.get("/api/stock", response_model=list[StockOut], dependencies=[Depends(require_api_key)])
 def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
+    reserved_by_sku_location = get_reserved_by_sku_location(db)
     rows = db.execute(
         select(Item.sku, Item.barcode, Item.name, Stock.location, Stock.quantity)
         .join(Stock, Stock.item_id == Item.id)
@@ -262,6 +264,7 @@ def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
                 name=name,
                 location=location,
                 quantity=quantity,
+                reserved_quantity=reserved_by_sku_location.get((sku, location), 0),
                 operator=latest_operation.operator if latest_operation else None,
                 scanner_id=latest_operation.scanner_id if latest_operation else None,
                 scan_at=latest_operation.created_at if latest_operation else None,
@@ -272,6 +275,7 @@ def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
 
 @app.get("/api/warehouse-stock", response_model=list[WarehouseStockOut], dependencies=[Depends(require_api_key)])
 def list_warehouse_stock(db: Session = Depends(get_db)) -> list[WarehouseStockOut]:
+    reserved_by_sku = get_reserved_by_sku(db)
     rows = db.execute(
         select(
             Item.sku,
@@ -298,6 +302,7 @@ def list_warehouse_stock(db: Session = Depends(get_db)) -> list[WarehouseStockOu
                 name=name,
                 warehouse=WAREHOUSE_CODE,
                 quantity=quantity,
+                reserved_quantity=reserved_by_sku.get(sku, 0),
                 operator=latest_operation.operator if latest_operation else None,
                 scanner_id=latest_operation.scanner_id if latest_operation else None,
                 scan_at=latest_operation.created_at if latest_operation else None,
@@ -560,6 +565,7 @@ def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]])
 
     created = 0
     blocked = 0
+    reserved_by_sku_location = get_reserved_by_sku_location(db)
     for row_number, row in enumerate(rows, start=2):
         normalized = {normalize_header(key): str(value or "").strip() for key, value in row.items()}
         code = normalize_code_value(get_picking_value(normalized, "code"))
@@ -591,7 +597,11 @@ def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]])
         for stock in stocks:
             if remaining <= 0:
                 break
-            pick_quantity = min(remaining, stock.quantity)
+            reserved_quantity = reserved_by_sku_location.get((item.sku, stock.location), 0)
+            available_quantity = max(stock.quantity - reserved_quantity, 0)
+            if available_quantity <= 0:
+                continue
+            pick_quantity = min(remaining, available_quantity)
             db.add(
                 PickingTask(
                     batch_id=batch_id,
@@ -602,6 +612,7 @@ def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]])
                     status="pending",
                 )
             )
+            reserved_by_sku_location[(item.sku, stock.location)] = reserved_quantity + pick_quantity
             created += 1
             remaining -= pick_quantity
         if remaining > 0:
@@ -622,6 +633,37 @@ def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]])
         raise WmsError("Nie znaleziono zadnych pozycji do pickingu.")
     db.commit()
     return created, blocked
+
+
+def get_reserved_by_sku_location(db: Session) -> dict[tuple[str, str], int]:
+    rows = db.execute(
+        select(
+            PickingTask.sku,
+            PickingTask.source_location,
+            func.coalesce(func.sum(PickingTask.quantity), 0),
+        )
+        .where(
+            PickingTask.status.in_(RESERVED_PICKING_STATUSES),
+            PickingTask.source_location.is_not(None),
+        )
+        .group_by(PickingTask.sku, PickingTask.source_location)
+    ).all()
+    return {(sku, location): int(quantity or 0) for sku, location, quantity in rows if location}
+
+
+def get_reserved_by_sku(db: Session) -> dict[str, int]:
+    rows = db.execute(
+        select(
+            PickingTask.sku,
+            func.coalesce(func.sum(PickingTask.quantity), 0),
+        )
+        .where(
+            PickingTask.status.in_(RESERVED_PICKING_STATUSES),
+            PickingTask.source_location.is_not(None),
+        )
+        .group_by(PickingTask.sku)
+    ).all()
+    return {sku: int(quantity or 0) for sku, quantity in rows}
 
 
 def normalize_header(value: str) -> str:
