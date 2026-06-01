@@ -22,7 +22,9 @@ from app.schemas import (
     MoveRequest,
     OperationOut,
     PickingBatchOut,
+    PickingCancelRequest,
     PickingCompleteRequest,
+    PickingFinishRequest,
     PickingImportOut,
     PickingNextRequest,
     PickingTaskOut,
@@ -44,7 +46,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260601-3"
+APP_VERSION = "20260601-5"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -419,6 +421,8 @@ def list_picking_batches(db: Session = Depends(get_db)) -> list[PickingBatchOut]
             func.sum(case((PickingTask.source_location.is_not(None), 1), else_=0)),
             func.sum(case((PickingTask.status == "done", 1), else_=0)),
             func.sum(case((PickingTask.status == "assigned", 1), else_=0)),
+            func.sum(case((PickingTask.status == "canceled", 1), else_=0)),
+            func.sum(case((PickingTask.status == "closed", 1), else_=0)),
             func.max(PickingTask.created_at),
         )
         .group_by(PickingTask.batch_id)
@@ -439,7 +443,9 @@ def list_picking_batches(db: Session = Depends(get_db)) -> list[PickingBatchOut]
             assigned_tasks=int(row[2] or 0),
             done_tasks=int(row[3] or 0),
             active_tasks=int(row[4] or 0),
-            created_at=batch_by_id[row[0]].created_at if row[0] in batch_by_id else row[5],
+            canceled_tasks=int(row[5] or 0),
+            closed_tasks=int(row[6] or 0),
+            created_at=batch_by_id[row[0]].created_at if row[0] in batch_by_id else row[7],
         )
         for row in task_rows
     ]
@@ -463,28 +469,112 @@ def list_picking_tasks(
     return [picking_task_out(db, task) for task in tasks]
 
 
+@app.post("/api/picking/cancel", response_model=PickingBatchOut, dependencies=[Depends(require_api_key)])
+def cancel_picking(payload: PickingCancelRequest, db: Session = Depends(get_db)) -> PickingBatchOut:
+    tasks = list(
+        db.scalars(
+            select(PickingTask)
+            .where(PickingTask.batch_id == payload.batch_id)
+            .with_for_update()
+        )
+    )
+    if not tasks:
+        raise HTTPException(status_code=404, detail="Nie znaleziono pickingu.")
+
+    cancelable = [task for task in tasks if task.status != "done"]
+    if not cancelable:
+        raise HTTPException(status_code=400, detail="Picking jest juz zebrany i nie mozna go anulowac.")
+
+    for task in cancelable:
+        task.status = "canceled"
+        task.scanner_id = None
+        task.operator = None
+        task.assigned_at = None
+    db.commit()
+
+    batch = db.scalar(select(PickingBatch).where(PickingBatch.batch_id == payload.batch_id))
+    return picking_batch_out(
+        batch_id=payload.batch_id,
+        source_filename=batch.source_filename if batch else None,
+        total_tasks=len(tasks),
+        assigned_tasks=sum(1 for task in tasks if task.source_location),
+        done_tasks=sum(1 for task in tasks if task.status == "done"),
+        active_tasks=0,
+        canceled_tasks=sum(1 for task in tasks if task.status == "canceled"),
+        closed_tasks=sum(1 for task in tasks if task.status == "closed"),
+        created_at=batch.created_at if batch else tasks[0].created_at,
+    )
+
+
+@app.post("/api/picking/finish", response_model=PickingBatchOut, dependencies=[Depends(require_api_key)])
+def finish_picking(payload: PickingFinishRequest, db: Session = Depends(get_db)) -> PickingBatchOut:
+    tasks = list(
+        db.scalars(
+            select(PickingTask)
+            .where(PickingTask.batch_id == payload.batch_id)
+            .with_for_update()
+        )
+    )
+    if not tasks:
+        raise HTTPException(status_code=404, detail="Nie znaleziono pickingu.")
+
+    done_count = sum(1 for task in tasks if task.status == "done")
+    if done_count <= 0:
+        raise HTTPException(status_code=400, detail="Nie mozna zakonczyc pickingu bez zebranych pozycji.")
+
+    finishable = [task for task in tasks if task.status not in {"done", "closed"}]
+    if not finishable and done_count >= len(tasks):
+        raise HTTPException(status_code=400, detail="Picking jest juz zebrany.")
+    if not finishable and done_count < len(tasks):
+        raise HTTPException(status_code=400, detail="Picking jest juz zakonczony czesciowo.")
+
+    for task in finishable:
+        task.status = "closed"
+        task.scanner_id = None
+        task.operator = None
+        task.assigned_at = None
+    db.commit()
+
+    batch = db.scalar(select(PickingBatch).where(PickingBatch.batch_id == payload.batch_id))
+    return picking_batch_out(
+        batch_id=payload.batch_id,
+        source_filename=batch.source_filename if batch else None,
+        total_tasks=len(tasks),
+        assigned_tasks=sum(1 for task in tasks if task.source_location),
+        done_tasks=sum(1 for task in tasks if task.status == "done"),
+        active_tasks=0,
+        canceled_tasks=sum(1 for task in tasks if task.status == "canceled"),
+        closed_tasks=sum(1 for task in tasks if task.status == "closed"),
+        created_at=batch.created_at if batch else tasks[0].created_at,
+    )
+
+
 @app.get("/api/shipping", response_model=list[ShippingOut], dependencies=[Depends(require_api_key)])
 def list_shipping(limit: int = Query(default=500, ge=1, le=1000), db: Session = Depends(get_db)) -> list[ShippingOut]:
-    complete_batch_ids = get_complete_picking_batch_ids(db)
-    if not complete_batch_ids:
+    shipping_batch_statuses = get_shipping_picking_batch_statuses(db)
+    if not shipping_batch_statuses:
         return []
 
+    shipping_batch_ids = list(shipping_batch_statuses)
     batches_by_id = {
         batch.batch_id: batch
-        for batch in db.scalars(select(PickingBatch).where(PickingBatch.batch_id.in_(complete_batch_ids)))
+        for batch in db.scalars(select(PickingBatch).where(PickingBatch.batch_id.in_(shipping_batch_ids)))
     }
     tasks = list(
         db.scalars(
             select(PickingTask)
             .where(
-                PickingTask.batch_id.in_(complete_batch_ids),
+                PickingTask.batch_id.in_(shipping_batch_ids),
                 PickingTask.status == "done",
             )
             .order_by(PickingTask.picked_at.desc(), PickingTask.id.desc())
             .limit(limit)
         )
     )
-    return [shipping_out(db, task, batches_by_id.get(task.batch_id)) for task in tasks]
+    return [
+        shipping_out(db, task, batches_by_id.get(task.batch_id), shipping_batch_statuses.get(task.batch_id, "zebrany"))
+        for task in tasks
+    ]
 
 
 @app.post("/api/picking/next", response_model=PickingTaskOut | None, dependencies=[Depends(require_api_key)])
@@ -753,16 +843,28 @@ def get_reserved_by_sku(db: Session) -> dict[str, int]:
     return {sku: int(quantity or 0) for sku, quantity in rows}
 
 
-def get_complete_picking_batch_ids(db: Session) -> list[str]:
+def get_shipping_picking_batch_statuses(db: Session) -> dict[str, str]:
     rows = db.execute(
         select(
             PickingTask.batch_id,
             func.count(PickingTask.id),
             func.sum(case((PickingTask.status == "done", 1), else_=0)),
+            func.sum(case((PickingTask.status == "closed", 1), else_=0)),
         )
         .group_by(PickingTask.batch_id)
     ).all()
-    return [batch_id for batch_id, total, done in rows if int(total or 0) > 0 and int(done or 0) >= int(total or 0)]
+    statuses = {}
+    for batch_id, total, done, closed in rows:
+        total = int(total or 0)
+        done = int(done or 0)
+        closed = int(closed or 0)
+        if total <= 0 or done <= 0:
+            continue
+        if done >= total:
+            statuses[batch_id] = "zebrany"
+        elif done + closed >= total:
+            statuses[batch_id] = "zebrany czesciowo"
+    return statuses
 
 
 def normalize_header(value: str) -> str:
@@ -800,6 +902,8 @@ def picking_batch_out(
     assigned_tasks: int,
     done_tasks: int,
     active_tasks: int,
+    canceled_tasks: int,
+    closed_tasks: int,
     created_at: object,
 ) -> PickingBatchOut:
     if total_tasks <= 0:
@@ -808,6 +912,12 @@ def picking_batch_out(
     elif done_tasks >= total_tasks:
         status = "zebrany"
         progress_percent = 100
+    elif done_tasks + closed_tasks >= total_tasks and done_tasks > 0:
+        status = "zebrany czesciowo"
+        progress_percent = round(done_tasks * 100 / total_tasks)
+    elif done_tasks + canceled_tasks >= total_tasks:
+        status = "anulowany"
+        progress_percent = round(done_tasks * 100 / total_tasks)
     elif done_tasks > 0 or active_tasks > 0:
         status = "w trakcie"
         progress_percent = round(done_tasks * 100 / total_tasks)
@@ -845,13 +955,13 @@ def picking_task_out(db: Session, task: PickingTask) -> PickingTaskOut:
     )
 
 
-def shipping_out(db: Session, task: PickingTask, batch: PickingBatch | None) -> ShippingOut:
+def shipping_out(db: Session, task: PickingTask, batch: PickingBatch | None, picking_status: str) -> ShippingOut:
     item = db.scalar(select(Item).where(Item.sku == task.sku))
     return ShippingOut(
         scan_at=task.picked_at,
         batch_id=task.batch_id,
         source_filename=batch.source_filename if batch else None,
-        picking_status="zebrany",
+        picking_status=picking_status,
         shipping_status="gotowe do wysylki",
         sku=task.sku,
         barcode=item.barcode if item else None,
