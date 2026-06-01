@@ -548,14 +548,15 @@ def complete_picking(payload: PickingCompleteRequest, db: Session = Depends(get_
 
 @app.get("/api/operations", response_model=list[OperationOut], dependencies=[Depends(require_api_key)])
 def operations(
-    limit: int = Query(default=100, ge=1, le=500),
-    operation_type: str | None = Query(default=None),
+    limit: int = 100,
+    operation_type: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[Operation]:
+    limit = max(1, min(int(limit), 500))
     query = select(Operation)
     if operation_type:
         query = query.where(Operation.operation_type == operation_type)
-    return list(db.scalars(query.order_by(Operation.id.desc()).limit(limit))
+    return list(db.scalars(query.order_by(Operation.id.desc()).limit(limit)))
 
 
 def parse_picking_file(filename: str, content: bytes) -> list[dict[str, str]]:
