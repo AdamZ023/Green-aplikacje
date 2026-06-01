@@ -481,6 +481,79 @@ button.secondary:hover,
   width: 6%;
 }
 
+.shipping-table {
+  min-width: 1680px;
+}
+
+.shipping-table th,
+.shipping-table td {
+  font-size: 12px;
+  padding: 7px 6px;
+}
+
+.shipping-table th:nth-child(1),
+.shipping-table td:nth-child(1) {
+  width: 8%;
+}
+
+.shipping-table th:nth-child(2),
+.shipping-table td:nth-child(2) {
+  width: 8%;
+}
+
+.shipping-table th:nth-child(3),
+.shipping-table td:nth-child(3) {
+  width: 10%;
+}
+
+.shipping-table th:nth-child(4),
+.shipping-table td:nth-child(4),
+.shipping-table th:nth-child(5),
+.shipping-table td:nth-child(5) {
+  width: 7%;
+}
+
+.shipping-table th:nth-child(6),
+.shipping-table td:nth-child(6) {
+  width: 8%;
+}
+
+.shipping-table th:nth-child(7),
+.shipping-table td:nth-child(7) {
+  width: 11%;
+}
+
+.shipping-table th:nth-child(8),
+.shipping-table td:nth-child(8) {
+  width: 16%;
+}
+
+.shipping-table th:nth-child(9),
+.shipping-table td:nth-child(9),
+.shipping-table th:nth-child(10),
+.shipping-table td:nth-child(10) {
+  width: 8%;
+}
+
+.shipping-table th:nth-child(11),
+.shipping-table td:nth-child(11) {
+  width: 4%;
+}
+
+.shipping-table th:nth-child(12),
+.shipping-table td:nth-child(12),
+.shipping-table th:nth-child(13),
+.shipping-table td:nth-child(13) {
+  width: 6%;
+}
+
+.shipping-table th:nth-child(14),
+.shipping-table td:nth-child(14),
+.shipping-table th:nth-child(15),
+.shipping-table td:nth-child(15) {
+  width: 8%;
+}
+
 .history-section {
   margin-top: 18px;
 }
