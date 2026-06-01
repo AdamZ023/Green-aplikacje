@@ -124,6 +124,25 @@ class PickingTaskOut(BaseModel):
     created_at: datetime
 
 
+class ShippingOut(BaseModel):
+    scan_at: datetime | None = None
+    batch_id: str
+    source_filename: str | None = None
+    picking_status: str
+    shipping_status: str
+    sku: str
+    barcode: str | None = None
+    name: str | None = None
+    source_location: str | None = None
+    target_location: str
+    quantity: int
+    operator: str | None = None
+    scanner_id: str | None = None
+    assigned_at: datetime | None = None
+    picked_at: datetime | None = None
+    created_at: datetime
+
+
 class PickingNextRequest(BaseModel):
     batch_id: str = Field(min_length=1, max_length=120)
     scanner_id: str = Field(min_length=1, max_length=120)
