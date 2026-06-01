@@ -24,6 +24,7 @@ class StockOut(BaseModel):
     name: str
     location: str
     quantity: int
+    reserved_quantity: int = 0
     operator: str | None = None
     scanner_id: str | None = None
     scan_at: datetime | None = None
@@ -35,6 +36,7 @@ class WarehouseStockOut(BaseModel):
     name: str
     warehouse: str
     quantity: int
+    reserved_quantity: int = 0
     operator: str | None = None
     scanner_id: str | None = None
     scan_at: datetime | None = None
