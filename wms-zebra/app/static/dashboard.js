@@ -81,24 +81,25 @@ async function loadAll() {
 async function loadWarehouseStock() {
   const hadRows = warehouseRows.children.length > 0;
   if (!hadRows) {
-    warehouseRows.innerHTML = "<tr><td colspan=\"8\">Ladowanie...</td></tr>";
+    warehouseRows.innerHTML = "<tr><td colspan=\"9\">Ladowanie...</td></tr>";
   }
   const response = await fetch("/api/warehouse-stock", {
     headers: { "X-API-Key": apiKeyInput.value }
   });
 
   if (!response.ok) {
-    warehouseRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
+    warehouseRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
 
   const stock = await response.json();
   if (!stock.length) {
-    warehouseRows.innerHTML = "<tr><td colspan=\"8\">Brak stanow.</td></tr>";
+    warehouseRows.innerHTML = "<tr><td colspan=\"9\">Brak stanow.</td></tr>";
     return;
   }
 
   const total = stock.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const reservedTotal = stock.reduce((sum, item) => sum + Number(item.reserved_quantity || 0), 0);
   warehouseRows.innerHTML = stock.map((item) => `
     <tr>
       <td>${escapeHtml(item.barcode || "")}</td>
@@ -106,34 +107,36 @@ async function loadWarehouseStock() {
       <td>${escapeHtml(item.name)}</td>
       <td>${escapeHtml(item.warehouse)}</td>
       <td>${item.quantity}</td>
+      <td>${item.reserved_quantity || 0}</td>
       <td>${escapeHtml(formatScanTime(item.scan_at))}</td>
       <td>${escapeHtml(item.operator || "")}</td>
       <td>${escapeHtml(item.scanner_id || "")}</td>
     </tr>
-  `).join("") + totalRow(4, total, 3);
+  `).join("") + totalRow(4, total, reservedTotal, 3);
 }
 
 async function loadLogisticsStock() {
   const hadRows = logisticsRows.children.length > 0;
   if (!hadRows) {
-    logisticsRows.innerHTML = "<tr><td colspan=\"8\">Ladowanie...</td></tr>";
+    logisticsRows.innerHTML = "<tr><td colspan=\"9\">Ladowanie...</td></tr>";
   }
   const response = await fetch("/api/stock", {
     headers: { "X-API-Key": apiKeyInput.value }
   });
 
   if (!response.ok) {
-    logisticsRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
+    logisticsRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
 
   const stock = await response.json();
   if (!stock.length) {
-    logisticsRows.innerHTML = "<tr><td colspan=\"8\">Brak stanow.</td></tr>";
+    logisticsRows.innerHTML = "<tr><td colspan=\"9\">Brak stanow.</td></tr>";
     return;
   }
 
   const total = stock.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const reservedTotal = stock.reduce((sum, item) => sum + Number(item.reserved_quantity || 0), 0);
   logisticsRows.innerHTML = stock.map((item) => `
     <tr>
       <td>${escapeHtml(item.barcode || "")}</td>
@@ -141,11 +144,12 @@ async function loadLogisticsStock() {
       <td>${escapeHtml(item.name)}</td>
       <td>${escapeHtml(item.location)}</td>
       <td>${item.quantity}</td>
+      <td>${item.reserved_quantity || 0}</td>
       <td>${escapeHtml(formatScanTime(item.scan_at))}</td>
       <td>${escapeHtml(item.operator || "")}</td>
       <td>${escapeHtml(item.scanner_id || "")}</td>
     </tr>
-  `).join("") + totalRow(4, total, 3);
+  `).join("") + totalRow(4, total, reservedTotal, 3);
 }
 
 async function loadOperationHistory() {
@@ -329,11 +333,12 @@ function escapeHtml(value) {
   })[char]);
 }
 
-function totalRow(labelColspan, total, trailingColspan) {
+function totalRow(labelColspan, total, reservedTotal, trailingColspan) {
   return `
     <tr class="total-row">
       <td colspan="${labelColspan}">Total</td>
       <td>${total}</td>
+      <td>${reservedTotal}</td>
       <td colspan="${trailingColspan}"></td>
     </tr>
   `;
