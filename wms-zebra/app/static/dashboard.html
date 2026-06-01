@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260601-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260601-2">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260601-1" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260601-1" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260601-2" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260601-2" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -26,7 +26,8 @@
       <button id="logisticsViewButton" type="button">Stan Logistyczny</button>
       <button id="historyViewButton" type="button">Historia operacji</button>
       <button id="pickingViewButton" type="button">Picking</button>
-      <a class="button-link" href="/zebra-v2?v=20260601-1">Skaner</a>
+      <button id="shippingViewButton" type="button">Wysylka</button>
+      <a class="button-link" href="/zebra-v2?v=20260601-2">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -147,7 +148,35 @@
         </div>
       </section>
     </section>
+
+    <section id="shippingView" class="dashboard-view hidden">
+      <h2>Wysylka</h2>
+      <div class="table-wrap">
+        <table class="shipping-table">
+          <thead>
+            <tr>
+              <th>Skan</th>
+              <th>Numer pickingu</th>
+              <th>Plik zrodlowy</th>
+              <th>Status pickingu</th>
+              <th>Status wysylki</th>
+              <th>EAN</th>
+              <th>Indeks</th>
+              <th>Nazwa</th>
+              <th>Z lokalizacji</th>
+              <th>Karton / do lokalizacji</th>
+              <th>Ilosc</th>
+              <th>Operator</th>
+              <th>ID skanera</th>
+              <th>Przypisano</th>
+              <th>Utworzono</th>
+            </tr>
+          </thead>
+          <tbody id="shippingRows"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
-  <script src="/static/dashboard.js?v=20260601-1"></script>
+  <script src="/static/dashboard.js?v=20260601-2"></script>
 </body>
 </html>
