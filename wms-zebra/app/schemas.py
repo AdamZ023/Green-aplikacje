@@ -97,6 +97,10 @@ class PickingImportOut(BaseModel):
     blocked: int
 
 
+class PickingCancelRequest(BaseModel):
+    batch_id: str = Field(min_length=1, max_length=120)
+
+
 class PickingBatchOut(BaseModel):
     batch_id: str
     source_filename: str | None = None
