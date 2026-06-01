@@ -4,6 +4,7 @@ const logisticsRows = document.querySelector("#logisticsRows");
 const historyRows = document.querySelector("#historyRows");
 const pickingBatchRows = document.querySelector("#pickingBatchRows");
 const pickingRows = document.querySelector("#pickingRows");
+const shippingRows = document.querySelector("#shippingRows");
 const pickingFile = document.querySelector("#pickingFile");
 const pickingDetails = document.querySelector("#pickingDetails");
 const pickingDetailsTitle = document.querySelector("#pickingDetailsTitle");
@@ -12,13 +13,15 @@ const views = {
   warehouse: document.querySelector("#warehouseView"),
   logistics: document.querySelector("#logisticsView"),
   history: document.querySelector("#operationHistoryView"),
-  picking: document.querySelector("#pickingView")
+  picking: document.querySelector("#pickingView"),
+  shipping: document.querySelector("#shippingView")
 };
 const buttons = {
   warehouse: document.querySelector("#warehouseViewButton"),
   logistics: document.querySelector("#logisticsViewButton"),
   history: document.querySelector("#historyViewButton"),
-  picking: document.querySelector("#pickingViewButton")
+  picking: document.querySelector("#pickingViewButton"),
+  shipping: document.querySelector("#shippingViewButton")
 };
 const historyFilterButtons = {
   all: document.querySelector("#historyAllFilter"),
@@ -41,6 +44,7 @@ buttons.warehouse.addEventListener("click", () => showView("warehouse"));
 buttons.logistics.addEventListener("click", () => showView("logistics"));
 buttons.history.addEventListener("click", () => showView("history"));
 buttons.picking.addEventListener("click", () => showView("picking"));
+buttons.shipping.addEventListener("click", () => showView("shipping"));
 historyFilterButtons.all.addEventListener("click", () => setHistoryFilter("all"));
 historyFilterButtons.receive.addEventListener("click", () => setHistoryFilter("receive"));
 historyFilterButtons.move.addEventListener("click", () => setHistoryFilter("move"));
@@ -74,7 +78,8 @@ async function loadAll() {
     loadWarehouseStock(),
     loadLogisticsStock(),
     loadOperationHistory(),
-    loadPickingBatches()
+    loadPickingBatches(),
+    loadShipping()
   ]);
 }
 
@@ -279,6 +284,43 @@ async function loadPickingTasks(batchId) {
       <td>${task.quantity}</td>
       <td>${escapeHtml(task.operator || "")}</td>
       <td>${escapeHtml(task.scanner_id || "")}</td>
+    </tr>
+  `).join("");
+}
+
+async function loadShipping() {
+  if (!shippingRows.children.length) {
+    shippingRows.innerHTML = "<tr><td colspan=\"15\">Ladowanie...</td></tr>";
+  }
+  const response = await fetch("/api/shipping?limit=1000", {
+    headers: { "X-API-Key": apiKeyInput.value }
+  });
+  if (!response.ok) {
+    shippingRows.innerHTML = "<tr><td colspan=\"15\">Brak dostepu albo blad API.</td></tr>";
+    return;
+  }
+  const rows = await response.json();
+  if (!rows.length) {
+    shippingRows.innerHTML = "<tr><td colspan=\"15\">Brak pozycji gotowych do wysylki.</td></tr>";
+    return;
+  }
+  shippingRows.innerHTML = rows.map((item) => `
+    <tr>
+      <td>${escapeHtml(formatScanTime(item.scan_at))}</td>
+      <td>${escapeHtml(item.batch_id)}</td>
+      <td>${escapeHtml(item.source_filename || "")}</td>
+      <td>${escapeHtml(item.picking_status)}</td>
+      <td>${escapeHtml(item.shipping_status)}</td>
+      <td>${escapeHtml(item.barcode || "")}</td>
+      <td>${escapeHtml(item.sku)}</td>
+      <td>${escapeHtml(item.name || "")}</td>
+      <td>${escapeHtml(item.source_location || "")}</td>
+      <td>${escapeHtml(item.target_location || "")}</td>
+      <td>${item.quantity}</td>
+      <td>${escapeHtml(item.operator || "")}</td>
+      <td>${escapeHtml(item.scanner_id || "")}</td>
+      <td>${escapeHtml(formatScanTime(item.assigned_at))}</td>
+      <td>${escapeHtml(formatScanTime(item.created_at))}</td>
     </tr>
   `).join("");
 }
