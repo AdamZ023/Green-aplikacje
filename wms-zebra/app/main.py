@@ -44,7 +44,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260601-2"
+APP_VERSION = "20260601-3"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -239,9 +239,14 @@ def add_item(payload: ItemCreate, db: Session = Depends(get_db)) -> Item:
 @app.get("/api/stock", response_model=list[StockOut], dependencies=[Depends(require_api_key)])
 def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
     reserved_by_sku_location = get_reserved_by_sku_location(db)
+    excluded_locations = get_picking_target_locations(db)
+    filters = [Stock.quantity > 0]
+    if excluded_locations:
+        filters.append(Stock.location.not_in(excluded_locations))
     rows = db.execute(
         select(Item.sku, Item.barcode, Item.name, Stock.location, Stock.quantity)
         .join(Stock, Stock.item_id == Item.id)
+        .where(*filters)
         .order_by(Item.sku, Stock.location)
     ).all()
     stock_rows = []
@@ -277,6 +282,10 @@ def list_stock(db: Session = Depends(get_db)) -> list[StockOut]:
 @app.get("/api/warehouse-stock", response_model=list[WarehouseStockOut], dependencies=[Depends(require_api_key)])
 def list_warehouse_stock(db: Session = Depends(get_db)) -> list[WarehouseStockOut]:
     reserved_by_sku = get_reserved_by_sku(db)
+    excluded_locations = get_picking_target_locations(db)
+    stock_join_filter = Stock.item_id == Item.id
+    if excluded_locations:
+        stock_join_filter = stock_join_filter & Stock.location.not_in(excluded_locations)
     rows = db.execute(
         select(
             Item.sku,
@@ -284,7 +293,7 @@ def list_warehouse_stock(db: Session = Depends(get_db)) -> list[WarehouseStockOu
             Item.name,
             func.coalesce(func.sum(Stock.quantity), 0),
         )
-        .outerjoin(Stock, Stock.item_id == Item.id)
+        .outerjoin(Stock, stock_join_filter)
         .group_by(Item.sku, Item.barcode, Item.name)
         .order_by(Item.sku)
     ).all()
@@ -539,7 +548,7 @@ def operations(
     query = select(Operation)
     if operation_type:
         query = query.where(Operation.operation_type == operation_type)
-    return list(db.scalars(query.order_by(Operation.id.desc()).limit(limit)))
+    return list(db.scalars(query.order_by(Operation.id.desc()).limit(limit))
 
 
 def parse_picking_file(filename: str, content: bytes) -> list[dict[str, str]]:
@@ -591,6 +600,7 @@ def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]])
     created = 0
     blocked = 0
     reserved_by_sku_location = get_reserved_by_sku_location(db)
+    excluded_locations = get_picking_target_locations(db)
     for row_number, row in enumerate(rows, start=2):
         normalized = {normalize_header(key): str(value or "").strip() for key, value in row.items()}
         code = normalize_code_value(get_picking_value(normalized, "code"))
@@ -612,10 +622,13 @@ def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]])
             raise WmsError(f"Wiersz {row_number}: nie znaleziono produktu {code}.")
 
         remaining = quantity
+        stock_filters = [Stock.item_id == item.id, Stock.quantity > 0]
+        if excluded_locations:
+            stock_filters.append(Stock.location.not_in(excluded_locations))
         stocks = list(
             db.scalars(
                 select(Stock)
-                .where(Stock.item_id == item.id, Stock.quantity > 0)
+                .where(*stock_filters)
                 .order_by(Stock.location)
             )
         )
@@ -674,6 +687,14 @@ def get_reserved_by_sku_location(db: Session) -> dict[tuple[str, str], int]:
         .group_by(PickingTask.sku, PickingTask.source_location)
     ).all()
     return {(sku, location): int(quantity or 0) for sku, location, quantity in rows if location}
+
+
+def get_picking_target_locations(db: Session) -> set[str]:
+    return {
+        location
+        for location in db.scalars(select(PickingTask.target_location).where(PickingTask.target_location.is_not(None)))
+        if location
+    }
 
 
 def get_reserved_by_sku(db: Session) -> dict[str, int]:
