@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260601-4">
+  <link rel="stylesheet" href="/static/styles.css?v=20260601-5">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260601-4" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260601-4" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260601-5" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260601-5" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -27,7 +27,7 @@
       <button id="historyViewButton" type="button">Historia operacji</button>
       <button id="pickingViewButton" type="button">Picking</button>
       <button id="shippingViewButton" type="button">Wysylka</button>
-      <a class="button-link" href="/zebra-v2?v=20260601-4">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260601-5">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -128,7 +128,10 @@
       <section id="pickingDetails" class="history-section hidden">
         <div class="section-head">
           <h2 id="pickingDetailsTitle">Zawartosc pickingu</h2>
-          <button id="cancelPickingButton" type="button" class="danger-button">Anuluj picking</button>
+          <div class="section-actions">
+            <button id="finishPickingButton" type="button">Zakoncz Picking</button>
+            <button id="cancelPickingButton" type="button" class="danger-button">Anuluj picking</button>
+          </div>
         </div>
         <output id="pickingCancelStatus"></output>
         <div class="table-wrap">
@@ -181,6 +184,6 @@
       </div>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260601-4"></script>
+  <script src="/static/dashboard.js?v=20260601-5"></script>
 </body>
 </html>
