@@ -411,6 +411,7 @@ async def import_picking(request: Request, db: Session = Depends(get_db)) -> Pic
 
 @app.get("/api/picking/batches", response_model=list[PickingBatchOut], dependencies=[Depends(require_api_key)])
 def list_picking_batches(db: Session = Depends(get_db)) -> list[PickingBatchOut]:
+    block_invalid_picking_sources(db)
     task_rows = db.execute(
         select(
             PickingTask.batch_id,
@@ -451,6 +452,7 @@ def list_picking_tasks(
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[PickingTaskOut]:
+    block_invalid_picking_sources(db)
     query = select(PickingTask)
     if status:
         query = query.where(PickingTask.status == status)
@@ -487,13 +489,18 @@ def list_shipping(limit: int = Query(default=500, ge=1, le=1000), db: Session = 
 
 @app.post("/api/picking/next", response_model=PickingTaskOut | None, dependencies=[Depends(require_api_key)])
 def next_picking_task(payload: PickingNextRequest, db: Session = Depends(get_db)) -> PickingTaskOut | None:
+    block_invalid_picking_sources(db)
+    excluded_locations = get_picking_target_locations(db)
+    valid_source_filters = [PickingTask.source_location.is_not(None)]
+    if excluded_locations:
+        valid_source_filters.append(PickingTask.source_location.not_in(excluded_locations))
     existing_task = db.scalar(
         select(PickingTask)
         .where(
             PickingTask.batch_id == payload.batch_id,
             PickingTask.status == "assigned",
             PickingTask.scanner_id == payload.scanner_id,
-            PickingTask.source_location.is_not(None),
+            *valid_source_filters,
         )
         .order_by(PickingTask.id)
         .limit(1)
@@ -506,7 +513,7 @@ def next_picking_task(payload: PickingNextRequest, db: Session = Depends(get_db)
         .where(
             PickingTask.batch_id == payload.batch_id,
             PickingTask.status == "pending",
-            PickingTask.source_location.is_not(None),
+            *valid_source_filters,
         )
         .order_by(PickingTask.id)
         .with_for_update(skip_locked=True)
@@ -674,16 +681,20 @@ def create_picking_tasks(db: Session, batch_id: str, rows: list[dict[str, str]])
 
 
 def get_reserved_by_sku_location(db: Session) -> dict[tuple[str, str], int]:
+    excluded_locations = get_picking_target_locations(db)
+    filters = [
+        PickingTask.status.in_(RESERVED_PICKING_STATUSES),
+        PickingTask.source_location.is_not(None),
+    ]
+    if excluded_locations:
+        filters.append(PickingTask.source_location.not_in(excluded_locations))
     rows = db.execute(
         select(
             PickingTask.sku,
             PickingTask.source_location,
             func.coalesce(func.sum(PickingTask.quantity), 0),
         )
-        .where(
-            PickingTask.status.in_(RESERVED_PICKING_STATUSES),
-            PickingTask.source_location.is_not(None),
-        )
+        .where(*filters)
         .group_by(PickingTask.sku, PickingTask.source_location)
     ).all()
     return {(sku, location): int(quantity or 0) for sku, location, quantity in rows if location}
@@ -697,16 +708,45 @@ def get_picking_target_locations(db: Session) -> set[str]:
     }
 
 
+def block_invalid_picking_sources(db: Session) -> None:
+    excluded_locations = get_picking_target_locations(db)
+    if not excluded_locations:
+        return
+    tasks = list(
+        db.scalars(
+            select(PickingTask)
+            .where(
+                PickingTask.status.in_(RESERVED_PICKING_STATUSES),
+                PickingTask.source_location.in_(excluded_locations),
+            )
+            .with_for_update()
+        )
+    )
+    if not tasks:
+        return
+    for task in tasks:
+        task.status = "blocked"
+        task.source_location = None
+        task.scanner_id = None
+        task.operator = None
+        task.assigned_at = None
+    db.commit()
+
+
 def get_reserved_by_sku(db: Session) -> dict[str, int]:
+    excluded_locations = get_picking_target_locations(db)
+    filters = [
+        PickingTask.status.in_(RESERVED_PICKING_STATUSES),
+        PickingTask.source_location.is_not(None),
+    ]
+    if excluded_locations:
+        filters.append(PickingTask.source_location.not_in(excluded_locations))
     rows = db.execute(
         select(
             PickingTask.sku,
             func.coalesce(func.sum(PickingTask.quantity), 0),
         )
-        .where(
-            PickingTask.status.in_(RESERVED_PICKING_STATUSES),
-            PickingTask.source_location.is_not(None),
-        )
+        .where(*filters)
         .group_by(PickingTask.sku)
     ).all()
     return {sku: int(quantity or 0) for sku, quantity in rows}
