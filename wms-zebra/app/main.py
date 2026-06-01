@@ -29,6 +29,7 @@ from app.schemas import (
     ReceiveRequest,
     ScannerRegistrationOut,
     ScannerRegistrationRequest,
+    ShippingOut,
     StockOut,
     WarehouseStockOut,
 )
@@ -43,7 +44,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260601-1"
+APP_VERSION = "20260601-2"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -451,6 +452,30 @@ def list_picking_tasks(
     return [picking_task_out(db, task) for task in tasks]
 
 
+@app.get("/api/shipping", response_model=list[ShippingOut], dependencies=[Depends(require_api_key)])
+def list_shipping(limit: int = Query(default=500, ge=1, le=1000), db: Session = Depends(get_db)) -> list[ShippingOut]:
+    complete_batch_ids = get_complete_picking_batch_ids(db)
+    if not complete_batch_ids:
+        return []
+
+    batches_by_id = {
+        batch.batch_id: batch
+        for batch in db.scalars(select(PickingBatch).where(PickingBatch.batch_id.in_(complete_batch_ids)))
+    }
+    tasks = list(
+        db.scalars(
+            select(PickingTask)
+            .where(
+                PickingTask.batch_id.in_(complete_batch_ids),
+                PickingTask.status == "done",
+            )
+            .order_by(PickingTask.picked_at.desc(), PickingTask.id.desc())
+            .limit(limit)
+        )
+    )
+    return [shipping_out(db, task, batches_by_id.get(task.batch_id)) for task in tasks]
+
+
 @app.post("/api/picking/next", response_model=PickingTaskOut | None, dependencies=[Depends(require_api_key)])
 def next_picking_task(payload: PickingNextRequest, db: Session = Depends(get_db)) -> PickingTaskOut | None:
     existing_task = db.scalar(
@@ -666,6 +691,18 @@ def get_reserved_by_sku(db: Session) -> dict[str, int]:
     return {sku: int(quantity or 0) for sku, quantity in rows}
 
 
+def get_complete_picking_batch_ids(db: Session) -> list[str]:
+    rows = db.execute(
+        select(
+            PickingTask.batch_id,
+            func.count(PickingTask.id),
+            func.sum(case((PickingTask.status == "done", 1), else_=0)),
+        )
+        .group_by(PickingTask.batch_id)
+    ).all()
+    return [batch_id for batch_id, total, done in rows if int(total or 0) > 0 and int(done or 0) >= int(total or 0)]
+
+
 def normalize_header(value: str) -> str:
     return " ".join(str(value or "").strip().lower().replace("_", " ").split())
 
@@ -740,6 +777,28 @@ def picking_task_out(db: Session, task: PickingTask) -> PickingTaskOut:
         status=task.status,
         scanner_id=task.scanner_id,
         operator=task.operator,
+        assigned_at=task.assigned_at,
+        picked_at=task.picked_at,
+        created_at=task.created_at,
+    )
+
+
+def shipping_out(db: Session, task: PickingTask, batch: PickingBatch | None) -> ShippingOut:
+    item = db.scalar(select(Item).where(Item.sku == task.sku))
+    return ShippingOut(
+        scan_at=task.picked_at,
+        batch_id=task.batch_id,
+        source_filename=batch.source_filename if batch else None,
+        picking_status="zebrany",
+        shipping_status="gotowe do wysylki",
+        sku=task.sku,
+        barcode=item.barcode if item else None,
+        name=item.name if item else None,
+        source_location=task.source_location,
+        target_location=task.target_location,
+        quantity=task.quantity,
+        operator=task.operator,
+        scanner_id=task.scanner_id,
         assigned_at=task.assigned_at,
         picked_at=task.picked_at,
         created_at=task.created_at,
