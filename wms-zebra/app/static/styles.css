@@ -319,6 +319,13 @@ button:disabled {
   font-weight: 700;
 }
 
+.map-product-label text {
+  fill: var(--accent-strong);
+  font-size: 15px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
 .map-pallet.prepak rect {
   fill: #dff2ec;
   stroke: var(--accent);

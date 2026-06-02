@@ -605,8 +605,8 @@ function renderAllocationMap(pallets, contents = []) {
   const drawingLength = Math.max(allocationLength, fieldLength || 0, 0.8);
   const drawingWidth = Math.max(allocationWidth, fieldWidth || 0, 2.4);
   const contentsByPallet = groupAllocationContentsByPallet(contents);
-  const palletLabelsByCode = buildAllocationPalletLabels(pallets, contentsByPallet);
-  const scale = getAllocationMapScale(pallets, palletLabelsByCode, palletAlongRow, palletDepth);
+  const palletLabelsByCode = buildAllocationPalletLabels(pallets);
+  const scale = 72;
   const marginLeft = 78;
   const marginTop = 46;
   const marginRight = 38;
@@ -624,6 +624,7 @@ function renderAllocationMap(pallets, contents = []) {
   };
 
   const slotByPosition = new Map(sortedSlots.map((slot, index) => [slot, index]));
+  const aisleProductLabels = buildAllocationAisleProductLabels(sortedSlots, pallets, contentsByPallet);
   const paletaSvg = pallets
     .slice()
     .sort((left, right) => compareAllocationPallets(left, right))
@@ -643,6 +644,18 @@ function renderAllocationMap(pallets, contents = []) {
         <g class="map-pallet ${cssClass}">
           <rect x="${x}" y="${y}" width="${palletAlongRow * scale}" height="${palletDepth * scale}" rx="4"></rect>
           ${labels.map((line, lineIndex) => `<text x="${x + 7}" y="${y + 18 + lineIndex * 18}">${escapeSvg(line)}</text>`).join("")}
+        </g>
+      `;
+    })
+    .join("");
+  const aisleProductSvg = aisleProductLabels
+    .map((label) => {
+      const x = marginLeft + (label.startIndex + label.endIndex + 1) * palletAlongRow * scale / 2;
+      const y = aisleY + aisleWidth * scale / 2;
+      return `
+        <g class="map-product-label" transform="translate(${x} ${y}) rotate(-90)">
+          <text x="0" y="-8">${escapeSvg(label.model)}</text>
+          <text x="0" y="12">${escapeSvg(label.color)}</text>
         </g>
       `;
     })
@@ -673,6 +686,7 @@ function renderAllocationMap(pallets, contents = []) {
         <text class="map-row-label" x="12" y="${prepackY + palletDepth * scale / 2 + 5}">PREPAK</text>
         <text class="map-row-label" x="12" y="${rowY.LUZ + palletDepth * scale / 2 + 5}">LUZ</text>
         <text class="map-aisle-label" x="${marginLeft + 10}" y="${aisleTextY}">Alejka ${formatMeters(aisleWidth)}</text>
+        ${aisleProductSvg}
         ${meterTicksX}
         ${meterTicksY}
         ${paletaSvg}
@@ -795,35 +809,44 @@ function simplifyAllocationSku(value) {
   return String(value || "").replace(/^GPKS\d*/i, "");
 }
 
-function buildAllocationPalletLabels(pallets, contentsByPallet) {
+function buildAllocationPalletLabels(pallets) {
   const labels = new Map();
   pallets.forEach((pallet) => {
-    const palletContents = contentsByPallet.get(pallet.pallet_code) || [];
-    const modelLabel = simplifyAllocationSku(dominantContentValue(palletContents, "sku") || firstSkuFromList(pallet.sku_list));
-    const colorLabel = dominantContentValue(palletContents, "color");
     const positionLabel = `Poz. ${pallet.layout_position || "-"}`;
     labels.set(pallet.pallet_code, [
       String(pallet.pallet_code || ""),
-      modelLabel || "-",
-      colorLabel || "-",
       positionLabel
     ]);
   });
   return labels;
 }
 
-function getAllocationMapScale(pallets, labelsByCode, palletAlongRow, palletDepth) {
-  const longestLabelLength = pallets.reduce((maxLength, pallet) => {
-    const lines = labelsByCode.get(pallet.pallet_code) || [];
-    return Math.max(maxLength, ...lines.map((line) => String(line || "").length));
-  }, 0);
-  const minPalletWidth = Math.max(72, longestLabelLength * 7 + 16);
-  const minPalletHeight = 92;
-  return Math.ceil(Math.max(
-    72,
-    minPalletWidth / palletAlongRow,
-    minPalletHeight / palletDepth
-  ));
+function buildAllocationAisleProductLabels(sortedSlots, pallets, contentsByPallet) {
+  const productBySlot = sortedSlots.map((slot) => {
+    const slotPallets = pallets.filter((pallet) => normalizeMapPosition(pallet.layout_position) === slot);
+    const slotContents = slotPallets.flatMap((pallet) => contentsByPallet.get(pallet.pallet_code) || []);
+    const model = simplifyAllocationSku(dominantContentValue(slotContents, "sku") || firstSkuFromList(slotPallets[0]?.sku_list));
+    const color = dominantContentValue(slotContents, "color");
+    return { model, color };
+  });
+  const labels = [];
+  productBySlot.forEach((product, index) => {
+    if (!product.model && !product.color) return;
+    const key = `${product.model}|${product.color}`;
+    const previous = labels[labels.length - 1];
+    if (previous && previous.key === key && previous.endIndex === index - 1) {
+      previous.endIndex = index;
+      return;
+    }
+    labels.push({
+      key,
+      startIndex: index,
+      endIndex: index,
+      model: product.model || "-",
+      color: product.color || "-"
+    });
+  });
+  return labels;
 }
 
 function escapeSvg(value) {
