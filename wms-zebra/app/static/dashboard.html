@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260602-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260602-4">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260602-3" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260602-3" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260602-4" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260602-4" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -28,7 +28,7 @@
       <button id="pickingViewButton" type="button">Picking</button>
       <button id="shippingViewButton" type="button">Wysylka</button>
       <button id="allocationViewButton" type="button">Dostawy - Alokacja</button>
-      <a class="button-link" href="/zebra-v2?v=20260602-3">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260602-4">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -228,6 +228,14 @@
             <input id="allocationAisleWidth" type="number" min="3" max="5" step="0.1" value="4">
           </label>
           <label>
+            Margines PREPAK [m]
+            <input id="allocationPrepackMargin" type="number" min="0" step="0.1" value="0">
+          </label>
+          <label>
+            Margines LUZ [m]
+            <input id="allocationLuzMargin" type="number" min="0" step="0.1" value="0">
+          </label>
+          <label>
             Dlugosc pola [m]
             <input id="allocationFieldLength" type="number" min="0" step="0.1" placeholder="opcjonalnie">
           </label>
@@ -299,7 +307,7 @@
       </section>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260602-3"></script>
+  <script src="/static/dashboard.js?v=20260602-4"></script>
 </body>
 </html>
 

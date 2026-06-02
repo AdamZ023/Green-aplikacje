@@ -12,6 +12,8 @@ const allocationPlanRows = document.querySelector("#allocationPlanRows");
 const allocationMap = document.querySelector("#allocationMap");
 const allocationMapStatus = document.querySelector("#allocationMapStatus");
 const allocationAisleWidth = document.querySelector("#allocationAisleWidth");
+const allocationPrepackMargin = document.querySelector("#allocationPrepackMargin");
+const allocationLuzMargin = document.querySelector("#allocationLuzMargin");
 const allocationFieldLength = document.querySelector("#allocationFieldLength");
 const allocationFieldWidth = document.querySelector("#allocationFieldWidth");
 const pickingFile = document.querySelector("#pickingFile");
@@ -54,8 +56,11 @@ let activePickingBatch = localStorage.getItem("wmsPickingBatch") || "";
 let activeAllocationWorkspace = localStorage.getItem("wmsAllocationWorkspace") || "";
 let activePickingStatus = "";
 let allocationPalletCache = [];
+let allocationContentCache = [];
 
 allocationAisleWidth.value = localStorage.getItem("wmsAllocationAisleWidth") || "4";
+allocationPrepackMargin.value = localStorage.getItem("wmsAllocationPrepackMargin") || "0";
+allocationLuzMargin.value = localStorage.getItem("wmsAllocationLuzMargin") || "0";
 allocationFieldLength.value = localStorage.getItem("wmsAllocationFieldLength") || "";
 allocationFieldWidth.value = localStorage.getItem("wmsAllocationFieldWidth") || "";
 
@@ -83,6 +88,8 @@ document.querySelector("#allocationPlanImportButton").addEventListener("click", 
 cancelPickingButton.addEventListener("click", cancelPicking);
 finishPickingButton.addEventListener("click", finishPicking);
 allocationAisleWidth.addEventListener("input", updateAllocationMapSettings);
+allocationPrepackMargin.addEventListener("input", updateAllocationMapSettings);
+allocationLuzMargin.addEventListener("input", updateAllocationMapSettings);
 allocationFieldLength.addEventListener("input", updateAllocationMapSettings);
 allocationFieldWidth.addEventListener("input", updateAllocationMapSettings);
 
@@ -524,7 +531,8 @@ async function loadAllocationDetails(workspaceId) {
   const contents = await contentsResponse.json();
   const plan = await planResponse.json();
   allocationPalletCache = pallets;
-  renderAllocationMap(pallets);
+  allocationContentCache = contents;
+  renderAllocationMap(pallets, contents);
 
   allocationPalletRows.innerHTML = pallets.length ? pallets.map((pallet) => `
     <tr>
@@ -569,12 +577,14 @@ async function loadAllocationDetails(workspaceId) {
 
 function updateAllocationMapSettings() {
   localStorage.setItem("wmsAllocationAisleWidth", allocationAisleWidth.value);
+  localStorage.setItem("wmsAllocationPrepackMargin", allocationPrepackMargin.value);
+  localStorage.setItem("wmsAllocationLuzMargin", allocationLuzMargin.value);
   localStorage.setItem("wmsAllocationFieldLength", allocationFieldLength.value);
   localStorage.setItem("wmsAllocationFieldWidth", allocationFieldWidth.value);
-  renderAllocationMap(allocationPalletCache);
+  renderAllocationMap(allocationPalletCache, allocationContentCache);
 }
 
-function renderAllocationMap(pallets) {
+function renderAllocationMap(pallets, contents = []) {
   if (!pallets.length) {
     allocationMap.innerHTML = "<div class=\"empty-map\">Brak palet do narysowania.</div>";
     allocationMapStatus.textContent = "";
@@ -582,15 +592,17 @@ function renderAllocationMap(pallets) {
     return;
   }
 
-  const palletLength = 1.2;
-  const palletWidth = 0.8;
+  const palletAlongRow = 0.8;
+  const palletDepth = 1.2;
   const aisleWidth = clampNumber(Number(allocationAisleWidth.value || 4), 3, 5);
+  const prepackMargin = Math.max(Number(allocationPrepackMargin.value || 0), 0);
+  const luzMargin = Math.max(Number(allocationLuzMargin.value || 0), 0);
   const fieldLength = Number(allocationFieldLength.value || 0);
   const fieldWidth = Number(allocationFieldWidth.value || 0);
   const sortedSlots = getAllocationSlots(pallets);
-  const allocationLength = sortedSlots.length * palletLength;
-  const allocationWidth = palletWidth + aisleWidth + palletWidth;
-  const drawingLength = Math.max(allocationLength, fieldLength || 0, 1.2);
+  const allocationLength = sortedSlots.length * palletAlongRow;
+  const allocationWidth = prepackMargin + palletDepth + aisleWidth + palletDepth + luzMargin;
+  const drawingLength = Math.max(allocationLength, fieldLength || 0, 0.8);
   const drawingWidth = Math.max(allocationWidth, fieldWidth || 0, 2.4);
   const scale = 72;
   const marginLeft = 78;
@@ -599,21 +611,25 @@ function renderAllocationMap(pallets) {
   const marginBottom = 72;
   const svgWidth = marginLeft + drawingLength * scale + marginRight;
   const svgHeight = marginTop + drawingWidth * scale + marginBottom;
+  const prepackY = marginTop + prepackMargin * scale;
+  const aisleY = prepackY + palletDepth * scale;
+  const luzY = aisleY + aisleWidth * scale;
   const rowY = {
-    PREPAK: marginTop,
-    LUZ: marginTop + (palletWidth + aisleWidth) * scale,
-    MIESZANE: marginTop + (palletWidth + aisleWidth / 2) * scale - palletWidth * scale / 2,
-    NIEOKRESLONE: marginTop + (palletWidth + aisleWidth / 2) * scale - palletWidth * scale / 2
+    PREPAK: prepackY,
+    LUZ: luzY,
+    MIESZANE: aisleY + aisleWidth * scale / 2 - palletDepth * scale / 2,
+    NIEOKRESLONE: aisleY + aisleWidth * scale / 2 - palletDepth * scale / 2
   };
 
   const slotByPosition = new Map(sortedSlots.map((slot, index) => [slot, index]));
+  const contentsByPallet = groupAllocationContentsByPallet(contents);
   const paletaSvg = pallets
     .slice()
     .sort((left, right) => compareAllocationPallets(left, right))
     .map((pallet) => {
       const slot = normalizeMapPosition(pallet.layout_position);
       const index = slotByPosition.get(slot) ?? 0;
-      const x = marginLeft + index * palletLength * scale;
+      const x = marginLeft + index * palletAlongRow * scale;
       const y = rowY[pallet.layout_row] ?? rowY.NIEOKRESLONE;
       const cssClass = {
         PREPAK: "prepak",
@@ -622,12 +638,16 @@ function renderAllocationMap(pallets) {
         NIEOKRESLONE: "unknown"
       }[pallet.layout_row] || "unknown";
       const label = `${pallet.layout_row || ""} ${pallet.layout_position || ""}`.trim();
+      const palletContents = contentsByPallet.get(pallet.pallet_code) || [];
+      const modelLabel = simplifyAllocationSku(dominantContentValue(palletContents, "sku") || firstSkuFromList(pallet.sku_list));
+      const colorLabel = dominantContentValue(palletContents, "color");
       return `
         <g class="map-pallet ${cssClass}">
-          <rect x="${x}" y="${y}" width="${palletLength * scale}" height="${palletWidth * scale}" rx="4"></rect>
+          <rect x="${x}" y="${y}" width="${palletAlongRow * scale}" height="${palletDepth * scale}" rx="4"></rect>
           <text x="${x + 7}" y="${y + 18}">${escapeSvg(pallet.pallet_code)}</text>
-          <text x="${x + 7}" y="${y + 35}">${escapeSvg(label)}</text>
-          <text x="${x + 7}" y="${y + 52}">${escapeSvg(shortSkuList(pallet.sku_list))}</text>
+          <text x="${x + 7}" y="${y + 36}">${escapeSvg(modelLabel)}</text>
+          <text x="${x + 7}" y="${y + 54}">${escapeSvg(colorLabel)}</text>
+          <text x="${x + 7}" y="${y + 72}">${escapeSvg(label)}</text>
         </g>
       `;
     })
@@ -638,8 +658,14 @@ function renderAllocationMap(pallets) {
   const fieldRect = fieldLength > 0 && fieldWidth > 0
     ? `<rect class="field-limit" x="${marginLeft}" y="${marginTop}" width="${fieldLength * scale}" height="${fieldWidth * scale}"></rect>`
     : "";
-  const aisleY = marginTop + palletWidth * scale;
   const aisleTextY = aisleY + aisleWidth * scale / 2 + 5;
+  const prepackMarginLabel = prepackMargin > 0
+    ? `<text class="map-margin-label" x="${marginLeft + 10}" y="${marginTop + prepackMargin * scale / 2 + 5}">Margines PREPAK ${formatMeters(prepackMargin)}</text>`
+    : "";
+  const luzMarginY = luzY + palletDepth * scale;
+  const luzMarginLabel = luzMargin > 0
+    ? `<text class="map-margin-label" x="${marginLeft + 10}" y="${luzMarginY + luzMargin * scale / 2 + 5}">Margines LUZ ${formatMeters(luzMargin)}</text>`
+    : "";
 
   allocationMap.innerHTML = `
     <div class="allocation-map-scroll">
@@ -647,8 +673,10 @@ function renderAllocationMap(pallets) {
         <rect class="map-floor" x="${marginLeft}" y="${marginTop}" width="${drawingLength * scale}" height="${drawingWidth * scale}"></rect>
         ${fieldRect}
         <rect class="map-aisle" x="${marginLeft}" y="${aisleY}" width="${drawingLength * scale}" height="${aisleWidth * scale}"></rect>
-        <text class="map-row-label" x="12" y="${marginTop + palletWidth * scale / 2 + 5}">PREPAK</text>
-        <text class="map-row-label" x="12" y="${rowY.LUZ + palletWidth * scale / 2 + 5}">LUZ</text>
+        ${prepackMarginLabel}
+        ${luzMarginLabel}
+        <text class="map-row-label" x="12" y="${prepackY + palletDepth * scale / 2 + 5}">PREPAK</text>
+        <text class="map-row-label" x="12" y="${rowY.LUZ + palletDepth * scale / 2 + 5}">LUZ</text>
         <text class="map-aisle-label" x="${marginLeft + 10}" y="${aisleTextY}">Alejka ${formatMeters(aisleWidth)}</text>
         ${meterTicksX}
         ${meterTicksY}
@@ -743,6 +771,38 @@ function formatMeters(value) {
 function shortSkuList(value) {
   const text = String(value || "");
   return text.length > 26 ? `${text.slice(0, 24)}...` : text;
+}
+
+function groupAllocationContentsByPallet(contents) {
+  const grouped = new Map();
+  contents.forEach((item) => {
+    const key = item.pallet_code || "";
+    if (!key) return;
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(item);
+  });
+  return grouped;
+}
+
+function dominantContentValue(contents, field) {
+  const counts = new Map();
+  contents.forEach((item) => {
+    const value = String(item[field] || "").trim();
+    if (!value) return;
+    counts.set(value, (counts.get(value) || 0) + Number(item.quantity_cartons || 1));
+  });
+  if (!counts.size) return "";
+  return Array.from(counts.entries()).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0][0];
+}
+
+function firstSkuFromList(value) {
+  return String(value || "").split(",")[0].trim();
+}
+
+function simplifyAllocationSku(value) {
+  return String(value || "").replace(/^GPKS\d*/i, "");
 }
 
 function escapeSvg(value) {

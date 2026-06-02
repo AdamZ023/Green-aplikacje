@@ -228,7 +228,7 @@ button:disabled {
 
 .allocation-map-controls {
   display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 220px)) minmax(260px, 1fr);
+  grid-template-columns: repeat(5, minmax(140px, 190px)) minmax(260px, 1fr);
   gap: 10px;
   align-items: end;
   margin-bottom: 10px;
@@ -291,6 +291,7 @@ button:disabled {
 }
 
 .map-aisle-label,
+.map-margin-label,
 .map-row-label,
 .map-axis-label,
 .map-ruler-text {
@@ -987,6 +988,10 @@ body.scanner-body {
   }
 
   .upload-row {
+    grid-template-columns: 1fr;
+  }
+
+  .allocation-map-controls {
     grid-template-columns: 1fr;
   }
 }
