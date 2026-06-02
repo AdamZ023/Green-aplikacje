@@ -9,6 +9,9 @@ const pickingFile = document.querySelector("#pickingFile");
 const pickingDetails = document.querySelector("#pickingDetails");
 const pickingDetailsTitle = document.querySelector("#pickingDetailsTitle");
 const pickingImportStatus = document.querySelector("#pickingImportStatus");
+const pickingCancelStatus = document.querySelector("#pickingCancelStatus");
+const cancelPickingButton = document.querySelector("#cancelPickingButton");
+const finishPickingButton = document.querySelector("#finishPickingButton");
 const views = {
   warehouse: document.querySelector("#warehouseView"),
   logistics: document.querySelector("#logisticsView"),
@@ -32,6 +35,7 @@ const savedKey = localStorage.getItem("wmsApiKey") || "";
 let activeView = localStorage.getItem("wmsDashboardView") || "warehouse";
 let activeHistoryFilter = localStorage.getItem("wmsHistoryFilter") || "move";
 let activePickingBatch = localStorage.getItem("wmsPickingBatch") || "";
+let activePickingStatus = "";
 
 apiKeyInput.value = savedKey;
 
@@ -50,6 +54,8 @@ historyFilterButtons.receive.addEventListener("click", () => setHistoryFilter("r
 historyFilterButtons.move.addEventListener("click", () => setHistoryFilter("move"));
 document.querySelector("#refresh").addEventListener("click", loadAll);
 document.querySelector("#pickingImportButton").addEventListener("click", importPicking);
+cancelPickingButton.addEventListener("click", cancelPicking);
+finishPickingButton.addEventListener("click", finishPicking);
 
 function showView(name) {
   activeView = name;
@@ -227,6 +233,7 @@ async function loadPickingBatches() {
     activePickingBatch = batches[0].batch_id;
     localStorage.setItem("wmsPickingBatch", activePickingBatch);
   }
+  activePickingStatus = batches.find((batch) => batch.batch_id === activePickingBatch)?.status || "";
 
   pickingBatchRows.innerHTML = batches.map((batch) => `
     <tr class="clickable-row ${batch.batch_id === activePickingBatch ? "selected-row" : ""}" data-batch-id="${escapeHtml(batch.batch_id)}">
@@ -257,6 +264,11 @@ async function loadPickingTasks(batchId) {
   }
   pickingDetails.classList.remove("hidden");
   pickingDetailsTitle.textContent = `Zawartosc pickingu ${batchId}`;
+  const closedStatus = activePickingStatus === "zebrany" || activePickingStatus === "anulowany" || activePickingStatus === "zebrany czesciowo";
+  cancelPickingButton.disabled = closedStatus;
+  finishPickingButton.disabled = closedStatus;
+  pickingCancelStatus.textContent = "";
+  pickingCancelStatus.classList.remove("error");
   if (!pickingRows.children.length) {
     pickingRows.innerHTML = "<tr><td colspan=\"10\">Ladowanie...</td></tr>";
   }
@@ -286,6 +298,94 @@ async function loadPickingTasks(batchId) {
       <td>${escapeHtml(task.scanner_id || "")}</td>
     </tr>
   `).join("");
+}
+
+async function cancelPicking() {
+  if (!activePickingBatch) {
+    pickingCancelStatus.textContent = "Wybierz picking do anulowania.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  if (activePickingStatus === "zebrany") {
+    pickingCancelStatus.textContent = "Nie mozna anulowac pickingu, ktory jest juz zebrany.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  if (activePickingStatus === "zebrany czesciowo") {
+    pickingCancelStatus.textContent = "Nie mozna anulowac pickingu, ktory jest juz zakonczony czesciowo.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  if (activePickingStatus === "anulowany") {
+    pickingCancelStatus.textContent = "Ten picking jest juz anulowany.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  const confirmed = confirm(`Anulowac picking ${activePickingBatch}? Pozycje juz zrobione zostana w historii, a reszta zadan zostanie anulowana.`);
+  if (!confirmed) return;
+
+  pickingCancelStatus.textContent = "Anulowanie pickingu...";
+  pickingCancelStatus.classList.remove("error");
+  const response = await fetch("/api/picking/cancel", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ batch_id: activePickingBatch })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    pickingCancelStatus.textContent = payload.detail || "Nie mozna anulowac pickingu.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  activePickingStatus = payload.status || "anulowany";
+  pickingCancelStatus.textContent = `Anulowano picking ${payload.batch_id}.`;
+  pickingCancelStatus.classList.remove("error");
+  await loadPickingBatches();
+}
+
+async function finishPicking() {
+  if (!activePickingBatch) {
+    pickingCancelStatus.textContent = "Wybierz picking do zakonczenia.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  if (activePickingStatus === "zebrany" || activePickingStatus === "zebrany czesciowo") {
+    pickingCancelStatus.textContent = "Ten picking jest juz zakonczony.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  if (activePickingStatus === "anulowany") {
+    pickingCancelStatus.textContent = "Nie mozna zakonczyc anulowanego pickingu.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  const confirmed = confirm(`Zakonczyc picking ${activePickingBatch}? Zebrane pozycje trafia do Wysylki, a reszta zostanie zamknieta bez mozliwosci dalszego zbierania.`);
+  if (!confirmed) return;
+
+  pickingCancelStatus.textContent = "Zamykanie pickingu...";
+  pickingCancelStatus.classList.remove("error");
+  const response = await fetch("/api/picking/finish", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ batch_id: activePickingBatch })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    pickingCancelStatus.textContent = payload.detail || "Nie mozna zakonczyc pickingu.";
+    pickingCancelStatus.classList.add("error");
+    return;
+  }
+  activePickingStatus = payload.status || "zebrany czesciowo";
+  pickingCancelStatus.textContent = `Zakonczono picking ${payload.batch_id}: ${activePickingStatus}.`;
+  pickingCancelStatus.classList.remove("error");
+  await loadPickingBatches();
+  await loadShipping();
 }
 
 async function loadShipping() {
@@ -422,7 +522,9 @@ function formatPickingStatus(value) {
     pending: "Do pobrania",
     assigned: "W trakcie",
     done: "Zrobione",
-    blocked: "Brak stanu"
+    blocked: "Brak stanu",
+    canceled: "Anulowane",
+    closed: "Zamkniete"
   }[value] || value;
 }
 
