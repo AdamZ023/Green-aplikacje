@@ -94,3 +94,78 @@ class ScannerLoginSession(Base):
     device_uid: Mapped[str] = mapped_column(String(120), index=True)
     scanner_id: Mapped[str] = mapped_column(String(120), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AllocationWorkspace(Base):
+    __tablename__ = "allocation_workspaces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(40), default="robocza", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class DeliveryImport(Base):
+    __tablename__ = "delivery_imports"
+    __table_args__ = (UniqueConstraint("workspace_id", "source_filename", name="uq_delivery_import_workspace_file"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    delivery_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    workspace_id: Mapped[str] = mapped_column(String(120), index=True)
+    source_filename: Mapped[str] = mapped_column(String(240))
+    delivery_ref: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    total_cartons: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class DeliveryPallet(Base):
+    __tablename__ = "delivery_pallets"
+    __table_args__ = (UniqueConstraint("delivery_id", "pallet_code", name="uq_delivery_pallet_code"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    delivery_id: Mapped[str] = mapped_column(String(120), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(120), index=True)
+    pallet_no: Mapped[str] = mapped_column(String(80), index=True)
+    pallet_code: Mapped[str] = mapped_column(String(120), index=True)
+    total_cartons: Mapped[int] = mapped_column(Integer, default=0)
+    allocation_status: Mapped[str] = mapped_column(String(60), default="roboczo_pod_alokacje", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class DeliveryPalletContent(Base):
+    __tablename__ = "delivery_pallet_contents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    delivery_id: Mapped[str] = mapped_column(String(120), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(120), index=True)
+    pallet_code: Mapped[str] = mapped_column(String(120), index=True)
+    sku: Mapped[str] = mapped_column(String(120), index=True)
+    color: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    kind: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    size: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    ean: Mapped[str | None] = mapped_column(String(240), nullable=True, index=True)
+    quantity_cartons: Mapped[int] = mapped_column(Integer, default=0)
+    sumy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    allocation_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    overflow_used: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AllocationPlanItem(Base):
+    __tablename__ = "allocation_plan_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(120), index=True)
+    source_filename: Mapped[str] = mapped_column(String(240), index=True)
+    mdk: Mapped[str] = mapped_column(String(120), index=True)
+    season: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    assortment_group: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    color: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    color_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    supplier: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    delivery_plan: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ean_prepack: Mapped[str | None] = mapped_column(String(240), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

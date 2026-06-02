@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260601-5">
+  <link rel="stylesheet" href="/static/styles.css?v=20260602-2">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260601-5" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260601-5" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260602-2" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260602-2" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -27,7 +27,8 @@
       <button id="historyViewButton" type="button">Historia operacji</button>
       <button id="pickingViewButton" type="button">Picking</button>
       <button id="shippingViewButton" type="button">Wysylka</button>
-      <a class="button-link" href="/zebra-v2?v=20260601-5">Skaner</a>
+      <button id="allocationViewButton" type="button">Dostawy - Alokacja</button>
+      <a class="button-link" href="/zebra-v2?v=20260602-2">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -183,7 +184,105 @@
         </table>
       </div>
     </section>
+
+    <section id="allocationView" class="dashboard-view hidden">
+      <h2>Dostawy - Alokacja</h2>
+      <div class="upload-row">
+        <input id="allocationName" type="text" placeholder="Nazwa alokacji roboczej">
+        <button id="allocationCreateButton" type="button">Utworz alokacje</button>
+        <output id="allocationStatus"></output>
+      </div>
+
+      <h2>Alokacje robocze</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Numer alokacji</th>
+              <th>Nazwa</th>
+              <th>Status</th>
+              <th>Palety</th>
+              <th>Kartony</th>
+              <th>Potwierdzone kartony</th>
+              <th>Niepotwierdzone kartony</th>
+              <th>Pozycje planu</th>
+            </tr>
+          </thead>
+          <tbody id="allocationWorkspaceRows"></tbody>
+        </table>
+      </div>
+
+      <section id="allocationDetails" class="history-section hidden">
+        <h2 id="allocationDetailsTitle">Zawartosc alokacji</h2>
+        <div class="upload-row">
+          <input id="deliveryFile" type="file" accept=".xlsx">
+          <button id="deliveryImportButton" type="button">Importuj rozladunek</button>
+          <input id="allocationPlanFile" type="file" accept=".xlsx">
+          <button id="allocationPlanImportButton" type="button">Importuj plan alokacji</button>
+        </div>
+
+        <h2>Palety pod alokacje</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Paleta</th>
+                <th>Status</th>
+                <th>Rzad</th>
+                <th>Pozycja</th>
+                <th>Kartonow</th>
+                <th>Indeksy</th>
+                <th>EAN</th>
+                <th>Dostawa</th>
+                <th>Plik</th>
+              </tr>
+            </thead>
+            <tbody id="allocationPalletRows"></tbody>
+          </table>
+        </div>
+
+        <h2>Zawartosc palet</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Dostawa</th>
+                <th>Paleta</th>
+                <th>Indeks</th>
+                <th>Kolor</th>
+                <th>Rodzaj</th>
+                <th>Rozmiar</th>
+                <th>EAN</th>
+                <th>Kartonow</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="allocationContentRows"></tbody>
+          </table>
+        </div>
+
+        <h2>Plan alokacji</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>MDK</th>
+                <th>Kolor</th>
+                <th>Dostawca</th>
+                <th>Dostawa plan</th>
+                <th>EAN PREPACK</th>
+                <th>Plik</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="allocationPlanRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   </main>
-  <script src="/static/dashboard.js?v=20260601-5"></script>
+  <script src="/static/dashboard.js?v=20260602-2"></script>
 </body>
 </html>
+
+

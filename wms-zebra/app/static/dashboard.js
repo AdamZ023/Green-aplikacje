@@ -5,11 +5,20 @@ const historyRows = document.querySelector("#historyRows");
 const pickingBatchRows = document.querySelector("#pickingBatchRows");
 const pickingRows = document.querySelector("#pickingRows");
 const shippingRows = document.querySelector("#shippingRows");
+const allocationWorkspaceRows = document.querySelector("#allocationWorkspaceRows");
+const allocationPalletRows = document.querySelector("#allocationPalletRows");
+const allocationContentRows = document.querySelector("#allocationContentRows");
+const allocationPlanRows = document.querySelector("#allocationPlanRows");
 const pickingFile = document.querySelector("#pickingFile");
+const deliveryFile = document.querySelector("#deliveryFile");
+const allocationPlanFile = document.querySelector("#allocationPlanFile");
 const pickingDetails = document.querySelector("#pickingDetails");
+const allocationDetails = document.querySelector("#allocationDetails");
 const pickingDetailsTitle = document.querySelector("#pickingDetailsTitle");
+const allocationDetailsTitle = document.querySelector("#allocationDetailsTitle");
 const pickingImportStatus = document.querySelector("#pickingImportStatus");
 const pickingCancelStatus = document.querySelector("#pickingCancelStatus");
+const allocationStatus = document.querySelector("#allocationStatus");
 const cancelPickingButton = document.querySelector("#cancelPickingButton");
 const finishPickingButton = document.querySelector("#finishPickingButton");
 const views = {
@@ -17,14 +26,16 @@ const views = {
   logistics: document.querySelector("#logisticsView"),
   history: document.querySelector("#operationHistoryView"),
   picking: document.querySelector("#pickingView"),
-  shipping: document.querySelector("#shippingView")
+  shipping: document.querySelector("#shippingView"),
+  allocation: document.querySelector("#allocationView")
 };
 const buttons = {
   warehouse: document.querySelector("#warehouseViewButton"),
   logistics: document.querySelector("#logisticsViewButton"),
   history: document.querySelector("#historyViewButton"),
   picking: document.querySelector("#pickingViewButton"),
-  shipping: document.querySelector("#shippingViewButton")
+  shipping: document.querySelector("#shippingViewButton"),
+  allocation: document.querySelector("#allocationViewButton")
 };
 const historyFilterButtons = {
   all: document.querySelector("#historyAllFilter"),
@@ -35,6 +46,7 @@ const savedKey = localStorage.getItem("wmsApiKey") || "";
 let activeView = localStorage.getItem("wmsDashboardView") || "warehouse";
 let activeHistoryFilter = localStorage.getItem("wmsHistoryFilter") || "move";
 let activePickingBatch = localStorage.getItem("wmsPickingBatch") || "";
+let activeAllocationWorkspace = localStorage.getItem("wmsAllocationWorkspace") || "";
 let activePickingStatus = "";
 
 apiKeyInput.value = savedKey;
@@ -49,11 +61,15 @@ buttons.logistics.addEventListener("click", () => showView("logistics"));
 buttons.history.addEventListener("click", () => showView("history"));
 buttons.picking.addEventListener("click", () => showView("picking"));
 buttons.shipping.addEventListener("click", () => showView("shipping"));
+buttons.allocation.addEventListener("click", () => showView("allocation"));
 historyFilterButtons.all.addEventListener("click", () => setHistoryFilter("all"));
 historyFilterButtons.receive.addEventListener("click", () => setHistoryFilter("receive"));
 historyFilterButtons.move.addEventListener("click", () => setHistoryFilter("move"));
 document.querySelector("#refresh").addEventListener("click", loadAll);
 document.querySelector("#pickingImportButton").addEventListener("click", importPicking);
+document.querySelector("#allocationCreateButton").addEventListener("click", createAllocationWorkspace);
+document.querySelector("#deliveryImportButton").addEventListener("click", importDelivery);
+document.querySelector("#allocationPlanImportButton").addEventListener("click", importAllocationPlan);
 cancelPickingButton.addEventListener("click", cancelPicking);
 finishPickingButton.addEventListener("click", finishPicking);
 
@@ -85,7 +101,8 @@ async function loadAll() {
     loadLogisticsStock(),
     loadOperationHistory(),
     loadPickingBatches(),
-    loadShipping()
+    loadShipping(),
+    loadAllocationWorkspaces()
   ]);
 }
 
@@ -423,6 +440,190 @@ async function loadShipping() {
       <td>${escapeHtml(formatScanTime(item.created_at))}</td>
     </tr>
   `).join("");
+}
+
+async function loadAllocationWorkspaces() {
+  if (!allocationWorkspaceRows.children.length) {
+    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"8\">Ladowanie...</td></tr>";
+  }
+  const response = await fetch("/api/allocations/workspaces", {
+    headers: { "X-API-Key": apiKeyInput.value }
+  });
+  if (!response.ok) {
+    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
+    allocationDetails.classList.add("hidden");
+    return;
+  }
+  const workspaces = await response.json();
+  if (!workspaces.length) {
+    activeAllocationWorkspace = "";
+    localStorage.removeItem("wmsAllocationWorkspace");
+    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"8\">Brak alokacji roboczych.</td></tr>";
+    allocationDetails.classList.add("hidden");
+    return;
+  }
+  if (!workspaces.some((workspace) => workspace.workspace_id === activeAllocationWorkspace)) {
+    activeAllocationWorkspace = workspaces[0].workspace_id;
+    localStorage.setItem("wmsAllocationWorkspace", activeAllocationWorkspace);
+  }
+  allocationWorkspaceRows.innerHTML = workspaces.map((workspace) => `
+    <tr class="clickable-row ${workspace.workspace_id === activeAllocationWorkspace ? "selected-row" : ""}" data-workspace-id="${escapeHtml(workspace.workspace_id)}">
+      <td>${escapeHtml(workspace.workspace_id)}</td>
+      <td>${escapeHtml(workspace.name)}</td>
+      <td>${escapeHtml(workspace.status)}</td>
+      <td>${workspace.total_pallets}</td>
+      <td>${workspace.total_cartons}</td>
+      <td>${workspace.confirmed_cartons}</td>
+      <td>${workspace.unconfirmed_cartons}</td>
+      <td>${workspace.plan_items}</td>
+    </tr>
+  `).join("");
+  allocationWorkspaceRows.querySelectorAll("[data-workspace-id]").forEach((row) => {
+    row.addEventListener("click", () => {
+      activeAllocationWorkspace = row.dataset.workspaceId;
+      localStorage.setItem("wmsAllocationWorkspace", activeAllocationWorkspace);
+      loadAllocationWorkspaces();
+    });
+  });
+  await loadAllocationDetails(activeAllocationWorkspace);
+}
+
+async function loadAllocationDetails(workspaceId) {
+  if (!workspaceId) {
+    allocationDetails.classList.add("hidden");
+    return;
+  }
+  allocationDetails.classList.remove("hidden");
+  allocationDetailsTitle.textContent = `Zawartosc alokacji ${workspaceId}`;
+  const headers = { "X-API-Key": apiKeyInput.value };
+  const [palletsResponse, contentsResponse, planResponse] = await Promise.all([
+    fetch(`/api/allocations/pallets?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
+    fetch(`/api/allocations/contents?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
+    fetch(`/api/allocations/plan?workspace_id=${encodeURIComponent(workspaceId)}`, { headers })
+  ]);
+  if (!palletsResponse.ok || !contentsResponse.ok || !planResponse.ok) {
+    allocationPalletRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
+    allocationContentRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
+    allocationPlanRows.innerHTML = "<tr><td colspan=\"7\">Brak dostepu albo blad API.</td></tr>";
+    return;
+  }
+  const pallets = await palletsResponse.json();
+  const contents = await contentsResponse.json();
+  const plan = await planResponse.json();
+
+  allocationPalletRows.innerHTML = pallets.length ? pallets.map((pallet) => `
+    <tr>
+      <td>${escapeHtml(pallet.pallet_code)}</td>
+      <td>${escapeHtml(pallet.status)}</td>
+      <td>${escapeHtml(pallet.layout_row || "")}</td>
+      <td>${escapeHtml(pallet.layout_position || "")}</td>
+      <td>${pallet.total_cartons}</td>
+      <td>${escapeHtml(pallet.sku_list || "")}</td>
+      <td>${escapeHtml(pallet.ean_list || "")}</td>
+      <td>${escapeHtml(pallet.delivery_ref || "")}</td>
+      <td>${escapeHtml(pallet.source_filename || "")}</td>
+    </tr>
+  `).join("") : "<tr><td colspan=\"9\">Brak palet w tej alokacji.</td></tr>";
+
+  allocationContentRows.innerHTML = contents.length ? contents.map((item) => `
+    <tr>
+      <td>${escapeHtml(item.delivery_ref || "")}</td>
+      <td>${escapeHtml(item.pallet_code)}</td>
+      <td>${escapeHtml(item.sku)}</td>
+      <td>${escapeHtml(item.color || "")}</td>
+      <td>${escapeHtml(item.kind || "")}</td>
+      <td>${escapeHtml(item.size || "")}</td>
+      <td>${escapeHtml(item.ean || "")}</td>
+      <td>${item.quantity_cartons}</td>
+      <td>${escapeHtml(item.status)}</td>
+    </tr>
+  `).join("") : "<tr><td colspan=\"9\">Brak zawartosci palet.</td></tr>";
+
+  allocationPlanRows.innerHTML = plan.length ? plan.map((item) => `
+    <tr>
+      <td>${escapeHtml(item.mdk)}</td>
+      <td>${escapeHtml(item.color || "")}</td>
+      <td>${escapeHtml(item.supplier || "")}</td>
+      <td>${escapeHtml(item.delivery_plan || "")}</td>
+      <td>${escapeHtml(item.ean_prepack || "")}</td>
+      <td>${escapeHtml(item.source_filename || "")}</td>
+      <td>${escapeHtml(item.status)}</td>
+    </tr>
+  `).join("") : "<tr><td colspan=\"7\">Brak planu alokacji.</td></tr>";
+}
+
+async function createAllocationWorkspace() {
+  const nameInput = document.querySelector("#allocationName");
+  const name = nameInput.value.trim();
+  if (!name) {
+    allocationStatus.textContent = "Wpisz nazwe alokacji roboczej.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = "Tworzenie alokacji...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch("/api/allocations/workspaces", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ name })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna utworzyc alokacji.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  activeAllocationWorkspace = payload.workspace_id;
+  localStorage.setItem("wmsAllocationWorkspace", activeAllocationWorkspace);
+  nameInput.value = "";
+  allocationStatus.textContent = `Utworzono alokacje ${payload.workspace_id}.`;
+  await loadAllocationWorkspaces();
+}
+
+async function importDelivery() {
+  await importAllocationFile(deliveryFile, "/api/allocations/delivery-import", "Wybierz plik rozladunek_*.xlsx.");
+}
+
+async function importAllocationPlan() {
+  await importAllocationFile(allocationPlanFile, "/api/allocations/plan-import", "Wybierz plik alokacja*.xlsx.");
+}
+
+async function importAllocationFile(input, endpoint, missingMessage) {
+  if (!activeAllocationWorkspace) {
+    allocationStatus.textContent = "Najpierw wybierz albo utworz alokacje robocza.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  const file = input.files[0];
+  if (!file) {
+    allocationStatus.textContent = missingMessage;
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = "Import...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "X-API-Key": apiKeyInput.value,
+      "X-Workspace-Id": activeAllocationWorkspace,
+      "X-Filename": file.name,
+      "Content-Type": "application/octet-stream"
+    },
+    body: await file.arrayBuffer()
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Blad importu.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = payload.message || `Zaimportowano ${payload.imported} pozycji.`;
+  input.value = "";
+  await loadAllocationWorkspaces();
 }
 
 async function importPicking() {

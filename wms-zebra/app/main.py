@@ -14,8 +14,27 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Item, Operation, PickingBatch, PickingTask, ScannerDevice, ScannerLoginSession, Stock
+from app.models import (
+    AllocationPlanItem,
+    AllocationWorkspace,
+    DeliveryImport,
+    DeliveryPallet,
+    DeliveryPalletContent,
+    Item,
+    Operation,
+    PickingBatch,
+    PickingTask,
+    ScannerDevice,
+    ScannerLoginSession,
+    Stock,
+)
 from app.schemas import (
+    AllocationContentOut,
+    AllocationImportOut,
+    AllocationPalletOut,
+    AllocationPlanItemOut,
+    AllocationWorkspaceCreate,
+    AllocationWorkspaceOut,
     ItemCreate,
     ItemOut,
     IssueRequest,
@@ -46,7 +65,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260601-5"
+APP_VERSION = "20260602-2"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -574,6 +593,190 @@ def list_shipping(limit: int = Query(default=500, ge=1, le=1000), db: Session = 
     ]
 
 
+@app.post(
+    "/api/allocations/workspaces",
+    response_model=AllocationWorkspaceOut,
+    dependencies=[Depends(require_api_key)],
+)
+def create_allocation_workspace(
+    payload: AllocationWorkspaceCreate,
+    db: Session = Depends(get_db),
+) -> AllocationWorkspaceOut:
+    workspace = AllocationWorkspace(
+        workspace_id=uuid4().hex[:12].upper(),
+        name=payload.name.strip(),
+        status="robocza",
+    )
+    db.add(workspace)
+    db.commit()
+    db.refresh(workspace)
+    return allocation_workspace_out(db, workspace)
+
+
+@app.get(
+    "/api/allocations/workspaces",
+    response_model=list[AllocationWorkspaceOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_workspaces(db: Session = Depends(get_db)) -> list[AllocationWorkspaceOut]:
+    workspaces = list(db.scalars(select(AllocationWorkspace).order_by(AllocationWorkspace.id.desc())))
+    return [allocation_workspace_out(db, workspace) for workspace in workspaces]
+
+
+@app.post(
+    "/api/allocations/delivery-import",
+    response_model=AllocationImportOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def import_allocation_delivery(request: Request, db: Session = Depends(get_db)) -> AllocationImportOut:
+    workspace_id = request.headers.get("X-Workspace-Id", "").strip()
+    filename = request.headers.get("X-Filename", "rozladunek.xlsx").strip()
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="Wybierz alokacje robocza.")
+    ensure_allocation_workspace(db, workspace_id)
+    content = await request.body()
+    try:
+        result = import_delivery_xlsx(db, workspace_id, filename, content)
+    except WmsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
+@app.post(
+    "/api/allocations/plan-import",
+    response_model=AllocationImportOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def import_allocation_plan(request: Request, db: Session = Depends(get_db)) -> AllocationImportOut:
+    workspace_id = request.headers.get("X-Workspace-Id", "").strip()
+    filename = request.headers.get("X-Filename", "alokacja.xlsx").strip()
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="Wybierz alokacje robocza.")
+    ensure_allocation_workspace(db, workspace_id)
+    content = await request.body()
+    try:
+        result = import_plan_xlsx(db, workspace_id, filename, content)
+    except WmsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
+@app.get(
+    "/api/allocations/pallets",
+    response_model=list[AllocationPalletOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_pallets(
+    workspace_id: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+) -> list[AllocationPalletOut]:
+    ensure_allocation_workspace(db, workspace_id)
+    plan_skus, plan_eans = get_allocation_plan_keys(db, workspace_id)
+    imports_by_delivery = get_delivery_imports_by_id(db, workspace_id)
+    contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
+    layout_by_pallet = build_allocation_layout(db, workspace_id, contents_by_pallet)
+    pallets = list(
+        db.scalars(
+            select(DeliveryPallet)
+            .where(DeliveryPallet.workspace_id == workspace_id)
+            .order_by(DeliveryPallet.delivery_id.desc(), DeliveryPallet.pallet_code)
+        )
+    )
+    rows = []
+    for pallet in pallets:
+        contents = contents_by_pallet.get(pallet.pallet_code, [])
+        status = allocation_content_status(contents, plan_skus, plan_eans)
+        delivery_import = imports_by_delivery.get(pallet.delivery_id)
+        rows.append(
+            AllocationPalletOut(
+                pallet_code=pallet.pallet_code,
+                pallet_no=pallet.pallet_no,
+                delivery_ref=delivery_import.delivery_ref if delivery_import else None,
+                source_filename=delivery_import.source_filename if delivery_import else None,
+                total_cartons=pallet.total_cartons,
+                status=status,
+                layout_row=layout_by_pallet.get(pallet.pallet_code, {}).get("row"),
+                layout_position=layout_by_pallet.get(pallet.pallet_code, {}).get("position"),
+                sku_list=", ".join(sorted({content.sku for content in contents if content.sku})),
+                ean_list=", ".join(sorted({content.ean for content in contents if content.ean})),
+            )
+        )
+    return rows
+
+
+@app.get(
+    "/api/allocations/contents",
+    response_model=list[AllocationContentOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_contents(
+    workspace_id: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+) -> list[AllocationContentOut]:
+    ensure_allocation_workspace(db, workspace_id)
+    plan_skus, plan_eans = get_allocation_plan_keys(db, workspace_id)
+    imports_by_delivery = get_delivery_imports_by_id(db, workspace_id)
+    contents = list(
+        db.scalars(
+            select(DeliveryPalletContent)
+            .where(DeliveryPalletContent.workspace_id == workspace_id)
+            .order_by(DeliveryPalletContent.delivery_id.desc(), DeliveryPalletContent.pallet_code, DeliveryPalletContent.sku)
+        )
+    )
+    rows = []
+    for content in contents:
+        delivery_import = imports_by_delivery.get(content.delivery_id)
+        rows.append(
+            AllocationContentOut(
+                delivery_ref=delivery_import.delivery_ref if delivery_import else None,
+                source_filename=delivery_import.source_filename if delivery_import else None,
+                pallet_code=content.pallet_code,
+                sku=content.sku,
+                color=content.color,
+                kind=content.kind,
+                size=content.size,
+                ean=content.ean,
+                quantity_cartons=content.quantity_cartons,
+                status=allocation_row_status(content.sku, content.ean, plan_skus, plan_eans),
+            )
+        )
+    return rows
+
+
+@app.get(
+    "/api/allocations/plan",
+    response_model=list[AllocationPlanItemOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_plan(
+    workspace_id: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+) -> list[AllocationPlanItemOut]:
+    ensure_allocation_workspace(db, workspace_id)
+    contents_skus, contents_eans = get_allocation_content_keys(db, workspace_id)
+    rows = list(
+        db.scalars(
+            select(AllocationPlanItem)
+            .where(AllocationPlanItem.workspace_id == workspace_id)
+            .order_by(AllocationPlanItem.id)
+        )
+    )
+    return [
+        AllocationPlanItemOut(
+            mdk=item.mdk,
+            color=item.color,
+            supplier=item.supplier,
+            delivery_plan=item.delivery_plan,
+            ean_prepack=item.ean_prepack,
+            source_filename=item.source_filename,
+            status="jest w dostawach"
+            if allocation_plan_item_found(item, contents_skus, contents_eans)
+            else "brak w dostawach",
+        )
+        for item in rows
+    ]
+
+
 @app.post("/api/picking/next", response_model=PickingTaskOut | None, dependencies=[Depends(require_api_key)])
 def next_picking_task(payload: PickingNextRequest, db: Session = Depends(get_db)) -> PickingTaskOut | None:
     block_invalid_picking_sources(db)
@@ -862,6 +1065,402 @@ def get_shipping_picking_batch_statuses(db: Session) -> dict[str, str]:
         elif done + closed >= total:
             statuses[batch_id] = "zebrany czesciowo"
     return statuses
+
+
+def ensure_allocation_workspace(db: Session, workspace_id: str) -> AllocationWorkspace:
+    workspace = db.scalar(select(AllocationWorkspace).where(AllocationWorkspace.workspace_id == workspace_id))
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Nie znaleziono alokacji roboczej.")
+    return workspace
+
+
+def import_delivery_xlsx(
+    db: Session,
+    workspace_id: str,
+    filename: str,
+    content: bytes,
+) -> AllocationImportOut:
+    if not filename.lower().endswith(".xlsx"):
+        raise WmsError("Rozladunek musi byc plikiem XLSX.")
+    if not filename.lower().startswith("rozladunek_"):
+        raise WmsError("Importowane sa tylko pliki rozladunek_*.xlsx.")
+
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise WmsError("Brakuje biblioteki openpyxl do odczytu XLSX.") from exc
+
+    rows = []
+    workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    sheet = workbook.active
+    header_row = 7
+    headers = [normalize_header(cell_to_text(value)) for value in next(sheet.iter_rows(min_row=header_row, max_row=header_row, values_only=True))]
+    if not any(headers):
+        raise WmsError("Nie znaleziono naglowkow rozladunku w wierszu 7.")
+
+    for row_values in sheet.iter_rows(min_row=header_row + 1, values_only=True):
+        row = {headers[index]: cell_to_text(value) for index, value in enumerate(row_values) if index < len(headers)}
+        sku = row.get("modelokolor", "").strip()
+        pallet = row.get("paleta", "").strip()
+        if not sku and not pallet:
+            continue
+        if pallet.upper() == "SUMA":
+            continue
+        quantity = parse_int(row.get("total box", "0"))
+        if not sku or not pallet or quantity <= 0:
+            continue
+        rows.append(
+            {
+                "sku": sku,
+                "color": row.get("colour", ""),
+                "kind": row.get("rodzaj", ""),
+                "size": row.get("rozmiar", ""),
+                "ean": normalize_code_value(row.get("ean", "")),
+                "pallet_no": pallet,
+                "quantity": quantity,
+                "sumy": parse_optional_int(row.get("sumy", "")),
+                "allocation_label": row.get("alokacja", ""),
+                "overflow_used": row.get("overflow used", ""),
+            }
+        )
+
+    if not rows:
+        raise WmsError("Nie znaleziono pozycji w pliku rozladunku.")
+
+    old_import = db.scalar(
+        select(DeliveryImport).where(
+            DeliveryImport.workspace_id == workspace_id,
+            DeliveryImport.source_filename == filename[:240],
+        )
+    )
+    replaced = bool(old_import)
+    if old_import:
+        delete_delivery_import(db, old_import.delivery_id)
+
+    delivery_ref = parse_delivery_ref(filename)
+    delivery_id = uuid4().hex[:12].upper()
+    db.add(
+        DeliveryImport(
+            delivery_id=delivery_id,
+            workspace_id=workspace_id,
+            source_filename=filename[:240],
+            delivery_ref=delivery_ref,
+            total_cartons=sum(row["quantity"] for row in rows),
+        )
+    )
+
+    pallet_totals: dict[str, int] = {}
+    for row in rows:
+        pallet_code = format_pallet_code(delivery_ref or delivery_id, row["pallet_no"])
+        pallet_totals[pallet_code] = pallet_totals.get(pallet_code, 0) + row["quantity"]
+        db.add(
+            DeliveryPalletContent(
+                delivery_id=delivery_id,
+                workspace_id=workspace_id,
+                pallet_code=pallet_code,
+                sku=row["sku"],
+                color=row["color"] or None,
+                kind=row["kind"] or None,
+                size=row["size"] or None,
+                ean=row["ean"] or None,
+                quantity_cartons=row["quantity"],
+                sumy=row["sumy"],
+                allocation_label=row["allocation_label"] or None,
+                overflow_used=row["overflow_used"] or None,
+            )
+        )
+
+    for pallet_code, total in pallet_totals.items():
+        pallet_no = pallet_code.rsplit("-P", 1)[-1].lstrip("0") or pallet_code
+        db.add(
+            DeliveryPallet(
+                delivery_id=delivery_id,
+                workspace_id=workspace_id,
+                pallet_no=pallet_no,
+                pallet_code=pallet_code,
+                total_cartons=total,
+                allocation_status="roboczo_pod_alokacje",
+            )
+        )
+    db.commit()
+    return AllocationImportOut(
+        workspace_id=workspace_id,
+        source_filename=filename,
+        imported=len(rows),
+        replaced=replaced,
+        message=f"Zaimportowano rozladunek: {len(pallet_totals)} palet, {sum(row['quantity'] for row in rows)} kartonow.",
+    )
+
+
+def import_plan_xlsx(
+    db: Session,
+    workspace_id: str,
+    filename: str,
+    content: bytes,
+) -> AllocationImportOut:
+    if not filename.lower().endswith(".xlsx"):
+        raise WmsError("Plan alokacji musi byc plikiem XLSX.")
+
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise WmsError("Brakuje biblioteki openpyxl do odczytu XLSX.") from exc
+
+    workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    sheet = workbook.active
+    source_filename = filename[:240]
+    old_items = list(
+        db.scalars(
+            select(AllocationPlanItem).where(
+                AllocationPlanItem.workspace_id == workspace_id,
+                AllocationPlanItem.source_filename == source_filename,
+            )
+        )
+    )
+    replaced = bool(old_items)
+    for item in old_items:
+        db.delete(item)
+
+    rows = list(sheet.iter_rows(values_only=True))
+    if not rows:
+        raise WmsError("Plik alokacji jest pusty.")
+    headers = [normalize_header(cell_to_text(value)) for value in rows[0]]
+    created = 0
+    for row_values in rows[1:]:
+        row = {headers[index]: cell_to_text(value) for index, value in enumerate(row_values) if index < len(headers)}
+        mdk = row.get("mdk", "").strip()
+        ean_prepack = normalize_code_value(row.get("ean prepack", ""))
+        if not mdk and not ean_prepack:
+            continue
+        db.add(
+            AllocationPlanItem(
+                workspace_id=workspace_id,
+                source_filename=source_filename,
+                mdk=mdk or ean_prepack,
+                season=row.get("sezon", "") or None,
+                assortment_group=row.get("grupa asort.", "") or row.get("grupa asort", "") or None,
+                model=row.get("model", "") or None,
+                color=row.get("kolor", "") or None,
+                color_code=row.get("kol", "") or None,
+                category=row.get("odziez/ akcesoria", "") or row.get("odziez akcesoria", "") or None,
+                supplier=row.get("dostawca", "") or None,
+                delivery_plan=row.get("dostawa plan", "") or None,
+                ean_prepack=ean_prepack or None,
+            )
+        )
+        created += 1
+    if created == 0:
+        raise WmsError("Nie znaleziono pozycji w pliku alokacji.")
+    db.commit()
+    return AllocationImportOut(
+        workspace_id=workspace_id,
+        source_filename=filename,
+        imported=created,
+        replaced=replaced,
+        message=f"Zaimportowano plan alokacji: {created} pozycji.",
+    )
+
+
+def delete_delivery_import(db: Session, delivery_id: str) -> None:
+    for model in (DeliveryPalletContent, DeliveryPallet, DeliveryImport):
+        rows = list(db.scalars(select(model).where(model.delivery_id == delivery_id)))
+        for row in rows:
+            db.delete(row)
+
+
+def allocation_workspace_out(db: Session, workspace: AllocationWorkspace) -> AllocationWorkspaceOut:
+    plan_skus, plan_eans = get_allocation_plan_keys(db, workspace.workspace_id)
+    contents = list(
+        db.scalars(select(DeliveryPalletContent).where(DeliveryPalletContent.workspace_id == workspace.workspace_id))
+    )
+    confirmed = sum(
+        content.quantity_cartons
+        for content in contents
+        if allocation_row_status(content.sku, content.ean, plan_skus, plan_eans) == "potwierdzone"
+    )
+    total = sum(content.quantity_cartons for content in contents)
+    total_pallets = db.scalar(
+        select(func.count(DeliveryPallet.id)).where(DeliveryPallet.workspace_id == workspace.workspace_id)
+    )
+    plan_items = db.scalar(
+        select(func.count(AllocationPlanItem.id)).where(AllocationPlanItem.workspace_id == workspace.workspace_id)
+    )
+    return AllocationWorkspaceOut(
+        workspace_id=workspace.workspace_id,
+        name=workspace.name,
+        status=workspace.status,
+        total_pallets=int(total_pallets or 0),
+        total_cartons=total,
+        confirmed_cartons=confirmed,
+        unconfirmed_cartons=max(total - confirmed, 0) if plan_skus or plan_eans else 0,
+        plan_items=int(plan_items or 0),
+        created_at=workspace.created_at,
+    )
+
+
+def build_allocation_layout(
+    db: Session,
+    workspace_id: str,
+    contents_by_pallet: dict[str, list[DeliveryPalletContent]],
+) -> dict[str, dict[str, str]]:
+    plan_order = [
+        item.mdk
+        for item in db.scalars(
+            select(AllocationPlanItem)
+            .where(AllocationPlanItem.workspace_id == workspace_id)
+            .order_by(AllocationPlanItem.id)
+        )
+        if item.mdk
+    ]
+    seen = set()
+    ordered_models = []
+    for sku in plan_order:
+        if sku not in seen:
+            ordered_models.append(sku)
+            seen.add(sku)
+
+    pallet_model: dict[str, str] = {}
+    pallet_row: dict[str, str] = {}
+    for pallet_code, contents in contents_by_pallet.items():
+        model = dominant_value([content.sku for content in contents])
+        row = allocation_layout_row([content.kind for content in contents])
+        pallet_model[pallet_code] = model
+        pallet_row[pallet_code] = row
+        if model and model not in seen:
+            ordered_models.append(model)
+            seen.add(model)
+
+    position_by_model = {sku: index + 1 for index, sku in enumerate(ordered_models)}
+    counters: dict[tuple[str, str], int] = {}
+    layout: dict[str, dict[str, str]] = {}
+    for pallet_code in sorted(contents_by_pallet):
+        model = pallet_model.get(pallet_code, "")
+        row = pallet_row.get(pallet_code, "MIESZANE")
+        base_position = position_by_model.get(model, 0)
+        key = (row, model)
+        counters[key] = counters.get(key, 0) + 1
+        position = f"{base_position}" if base_position else ""
+        if counters[key] > 1:
+            position = f"{position}.{counters[key]}" if position else str(counters[key])
+        layout[pallet_code] = {
+            "row": row,
+            "position": position,
+        }
+    return layout
+
+
+def allocation_layout_row(kinds: list[str | None]) -> str:
+    normalized = {normalize_header(kind or "") for kind in kinds if kind}
+    has_prepack = any("prepak" in kind for kind in normalized)
+    has_luz = any("luz" in kind for kind in normalized)
+    if has_prepack and not has_luz:
+        return "PREPAK"
+    if has_luz and not has_prepack:
+        return "LUZ"
+    if has_prepack and has_luz:
+        return "MIESZANE"
+    return "NIEOKRESLONE"
+
+
+def dominant_value(values: list[str | None]) -> str:
+    counts: dict[str, int] = {}
+    for value in values:
+        if not value:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    if not counts:
+        return ""
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def get_delivery_imports_by_id(db: Session, workspace_id: str) -> dict[str, DeliveryImport]:
+    return {
+        row.delivery_id: row
+        for row in db.scalars(select(DeliveryImport).where(DeliveryImport.workspace_id == workspace_id))
+    }
+
+
+def get_allocation_contents_by_pallet(db: Session, workspace_id: str) -> dict[str, list[DeliveryPalletContent]]:
+    contents_by_pallet: dict[str, list[DeliveryPalletContent]] = {}
+    for content in db.scalars(select(DeliveryPalletContent).where(DeliveryPalletContent.workspace_id == workspace_id)):
+        contents_by_pallet.setdefault(content.pallet_code, []).append(content)
+    return contents_by_pallet
+
+
+def get_allocation_plan_keys(db: Session, workspace_id: str) -> tuple[set[str], set[str]]:
+    items = list(db.scalars(select(AllocationPlanItem).where(AllocationPlanItem.workspace_id == workspace_id)))
+    skus = {item.mdk for item in items if item.mdk}
+    eans = {part for item in items for part in split_codes(item.ean_prepack)}
+    return skus, eans
+
+
+def get_allocation_content_keys(db: Session, workspace_id: str) -> tuple[set[str], set[str]]:
+    contents = list(db.scalars(select(DeliveryPalletContent).where(DeliveryPalletContent.workspace_id == workspace_id)))
+    skus = {content.sku for content in contents if content.sku}
+    eans = {part for content in contents for part in split_codes(content.ean)}
+    return skus, eans
+
+
+def allocation_content_status(
+    contents: list[DeliveryPalletContent],
+    plan_skus: set[str],
+    plan_eans: set[str],
+) -> str:
+    if not plan_skus and not plan_eans:
+        return "roboczo"
+    statuses = {allocation_row_status(content.sku, content.ean, plan_skus, plan_eans) for content in contents}
+    if statuses == {"potwierdzone"}:
+        return "potwierdzone"
+    if "potwierdzone" in statuses:
+        return "czesciowo potwierdzone"
+    return "niepotwierdzone"
+
+
+def allocation_row_status(sku: str | None, ean: str | None, plan_skus: set[str], plan_eans: set[str]) -> str:
+    if not plan_skus and not plan_eans:
+        return "roboczo"
+    if sku and sku in plan_skus:
+        return "potwierdzone"
+    if any(code in plan_eans for code in split_codes(ean)):
+        return "potwierdzone"
+    return "niepotwierdzone"
+
+
+def allocation_plan_item_found(item: AllocationPlanItem, content_skus: set[str], content_eans: set[str]) -> bool:
+    if item.mdk and item.mdk in content_skus:
+        return True
+    return any(code in content_eans for code in split_codes(item.ean_prepack))
+
+
+def split_codes(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {part.strip() for part in re.split(r"[/,; ]+", value) if part.strip()}
+
+
+def parse_delivery_ref(filename: str) -> str | None:
+    match = re.search(r"_(\d+)(?:\.[^.]+)?$", filename)
+    return match.group(1) if match else None
+
+
+def format_pallet_code(delivery_ref: str, pallet_no: str) -> str:
+    if re.fullmatch(r"\d+(\.0)?", pallet_no):
+        number = int(float(pallet_no))
+        return f"{delivery_ref}-P{number:03d}"
+    return f"{delivery_ref}-P{pallet_no}"
+
+
+def parse_int(value: object) -> int:
+    text_value = cell_to_text(value).replace(",", ".")
+    try:
+        return int(float(text_value))
+    except ValueError:
+        return 0
+
+
+def parse_optional_int(value: object) -> int | None:
+    parsed = parse_int(value)
+    return parsed if parsed else None
 
 
 def normalize_header(value: str) -> str:

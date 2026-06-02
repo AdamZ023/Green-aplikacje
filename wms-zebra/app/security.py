@@ -9,3 +9,4 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Brak poprawnego klucza API.",
         )
+

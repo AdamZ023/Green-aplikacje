@@ -164,3 +164,63 @@ class PickingCompleteRequest(BaseModel):
     target_location: str
     scanner_id: str = Field(min_length=1, max_length=120)
     operator: str | None = Field(default=None, max_length=120)
+
+
+class AllocationWorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class AllocationWorkspaceOut(BaseModel):
+    workspace_id: str
+    name: str
+    status: str
+    total_pallets: int = 0
+    total_cartons: int = 0
+    confirmed_cartons: int = 0
+    unconfirmed_cartons: int = 0
+    plan_items: int = 0
+    created_at: datetime
+
+
+class AllocationImportOut(BaseModel):
+    workspace_id: str
+    source_filename: str
+    imported: int
+    replaced: bool = False
+    message: str
+
+
+class AllocationPalletOut(BaseModel):
+    pallet_code: str
+    pallet_no: str
+    delivery_ref: str | None = None
+    source_filename: str | None = None
+    total_cartons: int
+    status: str
+    layout_row: str | None = None
+    layout_position: str | None = None
+    sku_list: str | None = None
+    ean_list: str | None = None
+
+
+class AllocationContentOut(BaseModel):
+    delivery_ref: str | None = None
+    source_filename: str | None = None
+    pallet_code: str
+    sku: str
+    color: str | None = None
+    kind: str | None = None
+    size: str | None = None
+    ean: str | None = None
+    quantity_cartons: int
+    status: str
+
+
+class AllocationPlanItemOut(BaseModel):
+    mdk: str
+    color: str | None = None
+    supplier: str | None = None
+    delivery_plan: str | None = None
+    ean_prepack: str | None = None
+    source_filename: str
+    status: str

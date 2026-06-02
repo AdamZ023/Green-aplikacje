@@ -1,0 +1,282 @@
+INSTRUKCJA URUCHAMIANIA WMS ZEBRA
+=================================
+
+1. WAZNE: LOKALNIE CZY W CHMURZE?
+---------------------------------
+
+Aplikacja moze dzialac w dwoch miejscach:
+
+1) Lokalnie na komputerze:
+   http://127.0.0.1:8000
+
+2) W chmurze Render:
+   https://wms-zebra.onrender.com
+
+Skanery Zebra powinny korzystac z wersji chmurowej, bo firmowe Wi-Fi blokuje
+polaczenia miedzy urzadzeniami lokalnymi.
+
+Jesli na komputerze otworzysz http://127.0.0.1:8000, widzisz lokalna baze.
+Jesli na Zebrze otworzysz https://wms-zebra.onrender.com, widzisz baze chmurowa.
+To sa dwa rozne srodowiska, dopoki nie podlaczysz jednej wspolnej bazy PostgreSQL.
+
+
+2. URUCHOMIENIE LOKALNE NA KOMPUTERZE
+-------------------------------------
+
+Otworz PowerShell i przejdz do katalogu projektu:
+
+cd "C:\Users\User738\Desktop\WMS - baza dnaych + skanery zebra"
+
+Jesli aplikacja byla juz przygotowana, uruchom:
+
+.\run_server.ps1
+
+Po uruchomieniu wejdz w przegladarce:
+
+http://127.0.0.1:8000
+
+Ekran skanera lokalnie:
+
+http://127.0.0.1:8000/scanner
+
+Dokumentacja API lokalnie:
+
+http://127.0.0.1:8000/docs
+
+Zatrzymanie lokalnego serwera:
+
+W oknie PowerShell nacisnij Ctrl + C.
+
+
+3. PIERWSZE URUCHOMIENIE LOKALNE OD ZERA
+----------------------------------------
+
+Jesli brakuje srodowiska .venv albo zaleznosci:
+
+cd "C:\Users\User738\Desktop\WMS - baza dnaych + skanery zebra"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+.\run_server.ps1
+
+
+4. URUCHOMIENIE W CHMURZE
+------------------------
+
+Aplikacja jest wdrozona na Render pod adresem:
+
+https://wms-zebra.onrender.com
+
+Panel WMS:
+
+https://wms-zebra.onrender.com
+
+Ekran skanera Zebra:
+
+https://wms-zebra.onrender.com/scanner
+
+Dokumentacja API:
+
+https://wms-zebra.onrender.com/docs
+
+
+5. KLUCZ API
+------------
+
+Do testow uzywany jest klucz:
+
+dev-local-key
+
+W panelu i na skanerze wpisz go w pole:
+
+Klucz API
+
+Nie wpisuj nazwy zmiennej WMS_API_KEY. Wpisz wartosc klucza, czyli:
+
+dev-local-key
+
+Jest tez wygenerowany kod QR z tym kluczem:
+
+qr_dev-local-key.svg
+
+Mozna go otworzyc w przegladarce i zeskanowac Zebra do pola Klucz API.
+
+
+6. JAK DODAC PRODUKT DO BAZY
+---------------------------
+
+Produkt musi istniec w bazie, zanim Zebra znajdzie go po SKU albo kodzie EAN.
+
+Wejdz w dokumentacje API:
+
+https://wms-zebra.onrender.com/docs
+
+Znajdz endpoint:
+
+POST /api/items
+
+Kliknij Try it out i dodaj produkt, np.:
+
+{
+  "sku": "TOWAR-001",
+  "name": "Produkt testowy",
+  "barcode": "5901234567890"
+}
+
+W naglowku trzeba podac:
+
+X-API-Key: dev-local-key
+
+Po dodaniu produktu Zebra moze skanowac:
+
+5901234567890
+
+Aplikacja znajdzie produkt po polu barcode.
+
+
+7. OBSLUGA SKANERA ZEBRA
+-----------------------
+
+Na Zebrze otworz:
+
+https://wms-zebra.onrender.com/scanner
+
+Wpisz albo zeskanuj klucz API:
+
+dev-local-key
+
+Uzupelnij:
+
+- ID skanera
+- operator
+- SKU / kod EAN
+- lokalizacja
+- ilosc
+
+Nastepnie wybierz:
+
+- Przyjmij
+- Wydaj
+- Przesun
+
+
+8. GDZIE WIDAC STANY MAGAZYNOWE?
+--------------------------------
+
+Stany widac w panelu:
+
+https://wms-zebra.onrender.com
+
+Wpisz klucz API:
+
+dev-local-key
+
+Kliknij:
+
+Odswiez
+
+Jesli skanujesz Zebra w chmurze, patrz na panel chmurowy.
+Nie patrz wtedy na lokalne http://127.0.0.1:8000, bo to inna baza.
+
+
+9. KODY QR I KRESKOWE
+---------------------
+
+QR do klucza API:
+
+qr_dev-local-key.svg
+
+Kod kreskowy CODE128 dla wartosci 5901234567890:
+
+barcode_5901234567890_code128.svg
+
+Uwaga: 5901234567890 nie jest poprawnym EAN-13, bo ma niepoprawna cyfre
+kontrolna. Poprawny EAN-13 dla pierwszych 12 cyfr 590123456789 to:
+
+5901234567893
+
+Plik barcode_5901234567890_code128.svg koduje jednak dokladnie:
+
+5901234567890
+
+
+10. NAJCZESTSZE PROBLEMY
+------------------------
+
+Problem:
+Zebra pokazuje Brak poprawnego klucza API.
+
+Rozwiazanie:
+W pole Klucz API wpisz wartosc:
+
+dev-local-key
+
+Nie wpisuj WMS_API_KEY.
+
+
+Problem:
+Zebra pokazuje Nie znaleziono SKU ani kodu EAN.
+
+Rozwiazanie:
+Produkt nie istnieje jeszcze w bazie albo nie ma uzupelnionego pola barcode.
+Dodaj produkt przez:
+
+https://wms-zebra.onrender.com/docs
+
+Endpoint:
+
+POST /api/items
+
+
+Problem:
+Na komputerze nie widac operacji wykonanych Zebra.
+
+Rozwiazanie:
+Sprawdz, czy patrzysz na ta sama wersje aplikacji.
+Zebra uzywa:
+
+https://wms-zebra.onrender.com
+
+Komputer lokalny moze pokazywac:
+
+http://127.0.0.1:8000
+
+To sa rozne bazy.
+
+
+Problem:
+Zebra nie moze wejsc na http://192.168.x.x:8000.
+
+Rozwiazanie:
+Firmowe Wi-Fi izoluje urzadzenia. Uzywaj wersji chmurowej:
+
+https://wms-zebra.onrender.com
+
+
+11. PRODUKCJA
+-------------
+
+Do testow aplikacja moze dzialac na SQLite.
+
+Docelowo trzeba podpiac PostgreSQL w Render, zeby baza byla trwala i wspolna
+dla wszystkich skanerow oraz panelu.
+
+Dokladna instrukcja jest w pliku:
+
+INSTRUKCJA_POSTGRES_RENDER.txt
+
+W Render trzeba ustawic:
+
+DATABASE_URL = adres PostgreSQL
+WMS_API_KEY = dlugi tajny klucz
+WMS_PUBLIC_URL = https://wms-zebra.onrender.com
+
+Po zmianie zmiennych srodowiskowych Render wykona redeploy aplikacji.
+
+Po redeployu sprawdz:
+
+https://wms-zebra.onrender.com/health/db
+
+Jesli aplikacja uzywa PostgreSQL, wynik zawiera:
+
+"database":"postgresql"

@@ -8,20 +8,15 @@ https://twoja-aplikacja/scanner
 
 ## Opcja najprostsza: Render + PostgreSQL
 
-1. Utworz usluge Web Service z katalogu `wms-zebra` w tym repozytorium.
-2. Dodaj PostgreSQL.
-3. Ustaw zmienne srodowiskowe:
+1. Utworz repozytorium GitHub z tym projektem.
+2. W Render utworz nowy `Blueprint` albo `Web Service` z tego repozytorium.
+3. Dodaj PostgreSQL.
+4. Ustaw zmienne srodowiskowe:
 
 ```text
-DATABASE_URL=adres PostgreSQL z panelu hostingu
+DATABASE_URL=adres PostgreSQL z panelu Render
 WMS_API_KEY=dlugi-losowy-klucz
-WMS_PUBLIC_URL=https://adres-twojej-aplikacji
-```
-
-4. Build command:
-
-```text
-pip install -r requirements.txt
+WMS_PUBLIC_URL=https://adres-twojej-aplikacji.onrender.com
 ```
 
 5. Start command:
@@ -33,13 +28,13 @@ uvicorn app.main:app --host 0.0.0.0 --port $PORT
 6. Po wdrozeniu otworz:
 
 ```text
-https://adres-twojej-aplikacji/
+https://adres-twojej-aplikacji.onrender.com/
 ```
 
 QR w lewym gornym rogu bedzie prowadzil Zebre do:
 
 ```text
-https://adres-twojej-aplikacji/scanner
+https://adres-twojej-aplikacji.onrender.com/scanner
 ```
 
 ## Opcja Docker
