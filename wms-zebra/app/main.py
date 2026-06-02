@@ -519,9 +519,6 @@ def finish_picking(payload: PickingFinishRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Nie znaleziono pickingu.")
 
     done_count = sum(1 for task in tasks if task.status == "done")
-    if done_count <= 0:
-        raise HTTPException(status_code=400, detail="Nie mozna zakonczyc pickingu bez zebranych pozycji.")
-
     finishable = [task for task in tasks if task.status not in {"done", "closed"}]
     if not finishable and done_count >= len(tasks):
         raise HTTPException(status_code=400, detail="Picking jest juz zebrany.")
@@ -912,7 +909,7 @@ def picking_batch_out(
     elif done_tasks >= total_tasks:
         status = "zebrany"
         progress_percent = 100
-    elif done_tasks + closed_tasks >= total_tasks and done_tasks > 0:
+    elif done_tasks + closed_tasks >= total_tasks and closed_tasks > 0:
         status = "zebrany czesciowo"
         progress_percent = round(done_tasks * 100 / total_tasks)
     elif done_tasks + canceled_tasks >= total_tasks:
