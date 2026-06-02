@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260529-5">
+  <link rel="stylesheet" href="/static/styles.css?v=20260601-5">
 </head>
 <body class="scanner-body">
   <main class="scanner">
@@ -91,28 +91,29 @@
         <div id="pickingBatchList" class="picking-batch-list"></div>
       </div>
       <div id="pickingWork" class="hidden">
-        <div class="scanner-summary">
-          <strong id="pickingProduct">Brak aktywnego zadania</strong>
-          <span id="pickingDetails">Pobierz kolejne zadanie.</span>
-        </div>
-        <div class="scan-target" data-target="pickingFrom">
-          <span>Z lokalizacji</span>
-          <strong id="pickingFromValue">Zeskanuj lokalizacje zrodlowa</strong>
-        </div>
-        <div class="scan-target active" data-target="pickingSku">
-          <span>SKU / kod</span>
-          <strong id="pickingSkuValue">Zeskanuj produkt</strong>
-        </div>
-        <div id="pickingDestination" class="destination-card hidden">
-          <span>Karton docelowy</span>
-          <strong id="pickingDestinationValue"></strong>
-        </div>
-        <div class="actions">
-          <button id="loadPickingTask" type="button">Pobierz zadanie</button>
-          <button id="completePickingTask" type="button">Zakoncz</button>
-          <button id="pickingReset" type="button">Wyczysc</button>
-          <button class="secondary backToOperations" type="button">Wroc</button>
-        </div>
+      <div class="scanner-summary">
+        <strong id="pickingProduct">Brak aktywnego zadania</strong>
+        <span id="pickingDetails">Pobierz kolejne zadanie.</span>
+      </div>
+      <div class="scan-target" data-target="pickingFrom">
+        <span>Z lokalizacji</span>
+        <strong id="pickingFromValue">Zeskanuj lokalizacje zrodlowa</strong>
+      </div>
+      <div class="scan-target active" data-target="pickingSku">
+        <span>SKU / kod</span>
+        <strong id="pickingSkuValue">Zeskanuj produkt</strong>
+      </div>
+      <div id="pickingDestination" class="destination-card hidden">
+        <span>Karton docelowy</span>
+        <strong id="pickingDestinationValue"></strong>
+      </div>
+      <div class="actions">
+        <button id="loadPickingTask" type="button">Pobierz zadanie</button>
+        <button id="completePickingTask" type="button">Zakoncz</button>
+        <button id="finishPickingBatch" type="button">Zakoncz Picking</button>
+        <button id="pickingReset" type="button">Wyczysc</button>
+        <button class="secondary backToOperations" type="button">Wroc</button>
+      </div>
       </div>
     </section>
 
@@ -129,6 +130,6 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260529-5"></script>
+  <script src="/static/scanner.js?v=20260601-5"></script>
 </body>
 </html>
