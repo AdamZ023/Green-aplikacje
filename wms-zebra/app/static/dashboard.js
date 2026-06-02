@@ -604,7 +604,9 @@ function renderAllocationMap(pallets, contents = []) {
   const allocationWidth = prepackMargin + palletDepth + aisleWidth + palletDepth + luzMargin;
   const drawingLength = Math.max(allocationLength, fieldLength || 0, 0.8);
   const drawingWidth = Math.max(allocationWidth, fieldWidth || 0, 2.4);
-  const scale = 72;
+  const contentsByPallet = groupAllocationContentsByPallet(contents);
+  const palletLabelsByCode = buildAllocationPalletLabels(pallets, contentsByPallet);
+  const scale = getAllocationMapScale(pallets, palletLabelsByCode, palletAlongRow, palletDepth);
   const marginLeft = 78;
   const marginTop = 46;
   const marginRight = 38;
@@ -622,7 +624,6 @@ function renderAllocationMap(pallets, contents = []) {
   };
 
   const slotByPosition = new Map(sortedSlots.map((slot, index) => [slot, index]));
-  const contentsByPallet = groupAllocationContentsByPallet(contents);
   const paletaSvg = pallets
     .slice()
     .sort((left, right) => compareAllocationPallets(left, right))
@@ -637,17 +638,11 @@ function renderAllocationMap(pallets, contents = []) {
         MIESZANE: "mixed",
         NIEOKRESLONE: "unknown"
       }[pallet.layout_row] || "unknown";
-      const label = `${pallet.layout_row || ""} ${pallet.layout_position || ""}`.trim();
-      const palletContents = contentsByPallet.get(pallet.pallet_code) || [];
-      const modelLabel = simplifyAllocationSku(dominantContentValue(palletContents, "sku") || firstSkuFromList(pallet.sku_list));
-      const colorLabel = dominantContentValue(palletContents, "color");
+      const labels = palletLabelsByCode.get(pallet.pallet_code) || [];
       return `
         <g class="map-pallet ${cssClass}">
           <rect x="${x}" y="${y}" width="${palletAlongRow * scale}" height="${palletDepth * scale}" rx="4"></rect>
-          <text x="${x + 7}" y="${y + 18}">${escapeSvg(pallet.pallet_code)}</text>
-          <text x="${x + 7}" y="${y + 36}">${escapeSvg(modelLabel)}</text>
-          <text x="${x + 7}" y="${y + 54}">${escapeSvg(colorLabel)}</text>
-          <text x="${x + 7}" y="${y + 72}">${escapeSvg(label)}</text>
+          ${labels.map((line, lineIndex) => `<text x="${x + 7}" y="${y + 18 + lineIndex * 18}">${escapeSvg(line)}</text>`).join("")}
         </g>
       `;
     })
@@ -768,11 +763,6 @@ function formatMeters(value) {
   return `${Number(value).toFixed(1).replace(".0", "")} m`;
 }
 
-function shortSkuList(value) {
-  const text = String(value || "");
-  return text.length > 26 ? `${text.slice(0, 24)}...` : text;
-}
-
 function groupAllocationContentsByPallet(contents) {
   const grouped = new Map();
   contents.forEach((item) => {
@@ -803,6 +793,37 @@ function firstSkuFromList(value) {
 
 function simplifyAllocationSku(value) {
   return String(value || "").replace(/^GPKS\d*/i, "");
+}
+
+function buildAllocationPalletLabels(pallets, contentsByPallet) {
+  const labels = new Map();
+  pallets.forEach((pallet) => {
+    const palletContents = contentsByPallet.get(pallet.pallet_code) || [];
+    const modelLabel = simplifyAllocationSku(dominantContentValue(palletContents, "sku") || firstSkuFromList(pallet.sku_list));
+    const colorLabel = dominantContentValue(palletContents, "color");
+    const positionLabel = `Poz. ${pallet.layout_position || "-"}`;
+    labels.set(pallet.pallet_code, [
+      String(pallet.pallet_code || ""),
+      modelLabel || "-",
+      colorLabel || "-",
+      positionLabel
+    ]);
+  });
+  return labels;
+}
+
+function getAllocationMapScale(pallets, labelsByCode, palletAlongRow, palletDepth) {
+  const longestLabelLength = pallets.reduce((maxLength, pallet) => {
+    const lines = labelsByCode.get(pallet.pallet_code) || [];
+    return Math.max(maxLength, ...lines.map((line) => String(line || "").length));
+  }, 0);
+  const minPalletWidth = Math.max(72, longestLabelLength * 7 + 16);
+  const minPalletHeight = 92;
+  return Math.ceil(Math.max(
+    72,
+    minPalletWidth / palletAlongRow,
+    minPalletHeight / palletDepth
+  ));
 }
 
 function escapeSvg(value) {
