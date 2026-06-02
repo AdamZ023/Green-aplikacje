@@ -105,6 +105,7 @@ document.querySelector("#moveReset").addEventListener("click", resetMove);
 document.querySelector("#moveSubmit").addEventListener("click", submitMove);
 document.querySelector("#loadPickingTask").addEventListener("click", () => loadPickingTask());
 document.querySelector("#completePickingTask").addEventListener("click", submitPicking);
+document.querySelector("#finishPickingBatch").addEventListener("click", finishSelectedPicking);
 document.querySelector("#pickingReset").addEventListener("click", resetPickingScans);
 
 document.addEventListener("keydown", (event) => {
@@ -458,7 +459,9 @@ async function loadPickingBatches() {
     return;
   }
 
-  const activeBatches = batches.filter((batch) => batch.status !== "zebrany");
+  const activeBatches = batches.filter(
+    (batch) => batch.status !== "zebrany" && batch.status !== "anulowany" && batch.status !== "zebrany czesciowo"
+  );
   if (!activeBatches.length) {
     pickingBatchList.innerHTML = "<div class=\"empty-batch\">Brak pickingow do realizacji.</div>";
     setStatus("Brak pickingow do realizacji.", false);
@@ -523,6 +526,33 @@ async function submitPicking() {
     resetPickingScans(false, false);
     updatePickingTaskDisplay();
     await loadPickingTask(true);
+  }
+}
+
+async function finishSelectedPicking() {
+  if (!canWork()) return;
+  if (!selectedPickingBatch) {
+    setStatus("Wybierz picking.", true);
+    setResult(pickingResult, "Nie mozna zakonczyc pickingu: wybierz picking.", true);
+    return;
+  }
+  const confirmed = confirm(`Zakonczyc picking ${selectedPickingBatch.batch_id}? Zebrane pozycje trafia do Wysylki, a reszta zadan zostanie zamknieta.`);
+  if (!confirmed) return;
+
+  const result = await send("/api/picking/finish", {
+    batch_id: selectedPickingBatch.batch_id
+  }, pickingResult);
+
+  if (result.ok) {
+    setStatus("Picking zakonczony czesciowo.", false);
+    setResult(pickingResult, `OK: zakonczono picking ${selectedPickingBatch.batch_id}.`, false);
+    selectedPickingBatch = null;
+    activePickingTask = null;
+    resetPickingScans(false);
+    hidePickingDestination();
+    pickingWork.classList.add("hidden");
+    pickingBatchChoice.classList.remove("hidden");
+    await loadPickingBatches();
   }
 }
 
