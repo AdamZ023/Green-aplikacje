@@ -137,6 +137,19 @@ button.secondary:hover,
   background: #202a34;
 }
 
+button.danger-button {
+  background: var(--danger);
+}
+
+button.danger-button:hover {
+  background: #742020;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .hidden {
   display: none !important;
 }
@@ -151,6 +164,37 @@ button.secondary:hover,
 
 .dashboard-view h2 {
   margin-bottom: 10px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.section-head h2 {
+  margin-bottom: 0;
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+#pickingCancelStatus {
+  display: block;
+  min-height: 22px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+#pickingCancelStatus.error {
+  color: var(--danger);
 }
 
 .filter-bar {
