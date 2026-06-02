@@ -226,6 +226,118 @@ button:disabled {
   color: var(--danger);
 }
 
+.allocation-map-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 220px)) minmax(260px, 1fr);
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.allocation-map-controls label {
+  gap: 4px;
+}
+
+.allocation-map-controls input {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.allocation-map-controls output {
+  min-height: 38px;
+  color: var(--muted);
+  font-weight: 700;
+  align-content: center;
+}
+
+.allocation-map-controls output.error {
+  color: var(--danger);
+}
+
+.allocation-map {
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.allocation-map-scroll {
+  overflow: auto;
+  padding: 12px;
+}
+
+.empty-map {
+  padding: 16px;
+  color: var(--muted);
+}
+
+.map-floor {
+  fill: #fbfcfd;
+  stroke: #c9d2dc;
+  stroke-width: 1;
+}
+
+.field-limit {
+  fill: none;
+  stroke: #9f2b2b;
+  stroke-dasharray: 9 6;
+  stroke-width: 2;
+}
+
+.map-aisle {
+  fill: #eef2f5;
+  stroke: #c9d2dc;
+  stroke-dasharray: 6 5;
+}
+
+.map-aisle-label,
+.map-row-label,
+.map-axis-label,
+.map-ruler-text {
+  fill: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.map-row-label {
+  fill: var(--ink);
+}
+
+.map-ruler {
+  stroke: #5f6b7a;
+  stroke-width: 1;
+}
+
+.map-pallet rect {
+  stroke-width: 2;
+}
+
+.map-pallet text {
+  fill: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.map-pallet.prepak rect {
+  fill: #dff2ec;
+  stroke: var(--accent);
+}
+
+.map-pallet.luz rect {
+  fill: #e8edf6;
+  stroke: #2f3b48;
+}
+
+.map-pallet.mixed rect {
+  fill: #fff4d8;
+  stroke: #b27616;
+}
+
+.map-pallet.unknown rect {
+  fill: #f4e8e8;
+  stroke: var(--danger);
+}
+
 .operation-grid,
 .mode-tabs {
   display: grid;

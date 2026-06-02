@@ -9,6 +9,11 @@ const allocationWorkspaceRows = document.querySelector("#allocationWorkspaceRows
 const allocationPalletRows = document.querySelector("#allocationPalletRows");
 const allocationContentRows = document.querySelector("#allocationContentRows");
 const allocationPlanRows = document.querySelector("#allocationPlanRows");
+const allocationMap = document.querySelector("#allocationMap");
+const allocationMapStatus = document.querySelector("#allocationMapStatus");
+const allocationAisleWidth = document.querySelector("#allocationAisleWidth");
+const allocationFieldLength = document.querySelector("#allocationFieldLength");
+const allocationFieldWidth = document.querySelector("#allocationFieldWidth");
 const pickingFile = document.querySelector("#pickingFile");
 const deliveryFile = document.querySelector("#deliveryFile");
 const allocationPlanFile = document.querySelector("#allocationPlanFile");
@@ -48,6 +53,11 @@ let activeHistoryFilter = localStorage.getItem("wmsHistoryFilter") || "move";
 let activePickingBatch = localStorage.getItem("wmsPickingBatch") || "";
 let activeAllocationWorkspace = localStorage.getItem("wmsAllocationWorkspace") || "";
 let activePickingStatus = "";
+let allocationPalletCache = [];
+
+allocationAisleWidth.value = localStorage.getItem("wmsAllocationAisleWidth") || "4";
+allocationFieldLength.value = localStorage.getItem("wmsAllocationFieldLength") || "";
+allocationFieldWidth.value = localStorage.getItem("wmsAllocationFieldWidth") || "";
 
 apiKeyInput.value = savedKey;
 
@@ -72,6 +82,9 @@ document.querySelector("#deliveryImportButton").addEventListener("click", import
 document.querySelector("#allocationPlanImportButton").addEventListener("click", importAllocationPlan);
 cancelPickingButton.addEventListener("click", cancelPicking);
 finishPickingButton.addEventListener("click", finishPicking);
+allocationAisleWidth.addEventListener("input", updateAllocationMapSettings);
+allocationFieldLength.addEventListener("input", updateAllocationMapSettings);
+allocationFieldWidth.addEventListener("input", updateAllocationMapSettings);
 
 function showView(name) {
   activeView = name;
@@ -510,6 +523,8 @@ async function loadAllocationDetails(workspaceId) {
   const pallets = await palletsResponse.json();
   const contents = await contentsResponse.json();
   const plan = await planResponse.json();
+  allocationPalletCache = pallets;
+  renderAllocationMap(pallets);
 
   allocationPalletRows.innerHTML = pallets.length ? pallets.map((pallet) => `
     <tr>
@@ -550,6 +565,188 @@ async function loadAllocationDetails(workspaceId) {
       <td>${escapeHtml(item.status)}</td>
     </tr>
   `).join("") : "<tr><td colspan=\"7\">Brak planu alokacji.</td></tr>";
+}
+
+function updateAllocationMapSettings() {
+  localStorage.setItem("wmsAllocationAisleWidth", allocationAisleWidth.value);
+  localStorage.setItem("wmsAllocationFieldLength", allocationFieldLength.value);
+  localStorage.setItem("wmsAllocationFieldWidth", allocationFieldWidth.value);
+  renderAllocationMap(allocationPalletCache);
+}
+
+function renderAllocationMap(pallets) {
+  if (!pallets.length) {
+    allocationMap.innerHTML = "<div class=\"empty-map\">Brak palet do narysowania.</div>";
+    allocationMapStatus.textContent = "";
+    allocationMapStatus.classList.remove("error");
+    return;
+  }
+
+  const palletLength = 1.2;
+  const palletWidth = 0.8;
+  const aisleWidth = clampNumber(Number(allocationAisleWidth.value || 4), 3, 5);
+  const fieldLength = Number(allocationFieldLength.value || 0);
+  const fieldWidth = Number(allocationFieldWidth.value || 0);
+  const sortedSlots = getAllocationSlots(pallets);
+  const allocationLength = sortedSlots.length * palletLength;
+  const allocationWidth = palletWidth + aisleWidth + palletWidth;
+  const drawingLength = Math.max(allocationLength, fieldLength || 0, 1.2);
+  const drawingWidth = Math.max(allocationWidth, fieldWidth || 0, 2.4);
+  const scale = 72;
+  const marginLeft = 78;
+  const marginTop = 46;
+  const marginRight = 38;
+  const marginBottom = 72;
+  const svgWidth = marginLeft + drawingLength * scale + marginRight;
+  const svgHeight = marginTop + drawingWidth * scale + marginBottom;
+  const rowY = {
+    PREPAK: marginTop,
+    LUZ: marginTop + (palletWidth + aisleWidth) * scale,
+    MIESZANE: marginTop + (palletWidth + aisleWidth / 2) * scale - palletWidth * scale / 2,
+    NIEOKRESLONE: marginTop + (palletWidth + aisleWidth / 2) * scale - palletWidth * scale / 2
+  };
+
+  const slotByPosition = new Map(sortedSlots.map((slot, index) => [slot, index]));
+  const paletaSvg = pallets
+    .slice()
+    .sort((left, right) => compareAllocationPallets(left, right))
+    .map((pallet) => {
+      const slot = normalizeMapPosition(pallet.layout_position);
+      const index = slotByPosition.get(slot) ?? 0;
+      const x = marginLeft + index * palletLength * scale;
+      const y = rowY[pallet.layout_row] ?? rowY.NIEOKRESLONE;
+      const cssClass = {
+        PREPAK: "prepak",
+        LUZ: "luz",
+        MIESZANE: "mixed",
+        NIEOKRESLONE: "unknown"
+      }[pallet.layout_row] || "unknown";
+      const label = `${pallet.layout_row || ""} ${pallet.layout_position || ""}`.trim();
+      return `
+        <g class="map-pallet ${cssClass}">
+          <rect x="${x}" y="${y}" width="${palletLength * scale}" height="${palletWidth * scale}" rx="4"></rect>
+          <text x="${x + 7}" y="${y + 18}">${escapeSvg(pallet.pallet_code)}</text>
+          <text x="${x + 7}" y="${y + 35}">${escapeSvg(label)}</text>
+          <text x="${x + 7}" y="${y + 52}">${escapeSvg(shortSkuList(pallet.sku_list))}</text>
+        </g>
+      `;
+    })
+    .join("");
+
+  const meterTicksX = buildMeterTicks(drawingLength, "x", marginLeft, marginTop, scale, drawingWidth);
+  const meterTicksY = buildMeterTicks(drawingWidth, "y", marginLeft, marginTop, scale, drawingLength);
+  const fieldRect = fieldLength > 0 && fieldWidth > 0
+    ? `<rect class="field-limit" x="${marginLeft}" y="${marginTop}" width="${fieldLength * scale}" height="${fieldWidth * scale}"></rect>`
+    : "";
+  const aisleY = marginTop + palletWidth * scale;
+  const aisleTextY = aisleY + aisleWidth * scale / 2 + 5;
+
+  allocationMap.innerHTML = `
+    <div class="allocation-map-scroll">
+      <svg viewBox="0 0 ${svgWidth} ${svgHeight}" width="${svgWidth}" height="${svgHeight}" role="img" aria-label="Mapa alokacji">
+        <rect class="map-floor" x="${marginLeft}" y="${marginTop}" width="${drawingLength * scale}" height="${drawingWidth * scale}"></rect>
+        ${fieldRect}
+        <rect class="map-aisle" x="${marginLeft}" y="${aisleY}" width="${drawingLength * scale}" height="${aisleWidth * scale}"></rect>
+        <text class="map-row-label" x="12" y="${marginTop + palletWidth * scale / 2 + 5}">PREPAK</text>
+        <text class="map-row-label" x="12" y="${rowY.LUZ + palletWidth * scale / 2 + 5}">LUZ</text>
+        <text class="map-aisle-label" x="${marginLeft + 10}" y="${aisleTextY}">Alejka ${formatMeters(aisleWidth)}</text>
+        ${meterTicksX}
+        ${meterTicksY}
+        ${paletaSvg}
+        <text class="map-axis-label" x="${marginLeft}" y="${svgHeight - 18}">Dlugosc: ${formatMeters(allocationLength)} / pole: ${fieldLength ? formatMeters(fieldLength) : "nie ustawiono"}</text>
+        <text class="map-axis-label" x="${marginLeft + 270}" y="${svgHeight - 18}">Szerokosc: ${formatMeters(allocationWidth)} / pole: ${fieldWidth ? formatMeters(fieldWidth) : "nie ustawiono"}</text>
+      </svg>
+    </div>
+  `;
+
+  const warnings = [];
+  if (fieldLength > 0 && allocationLength > fieldLength) {
+    warnings.push(`alokacja przekracza dlugosc pola o ${formatMeters(allocationLength - fieldLength)}`);
+  }
+  if (fieldWidth > 0 && allocationWidth > fieldWidth) {
+    warnings.push(`alokacja przekracza szerokosc pola o ${formatMeters(allocationWidth - fieldWidth)}`);
+  }
+  allocationMapStatus.textContent = warnings.length
+    ? warnings.join(", ")
+    : `Wymagane pole: ${formatMeters(allocationLength)} x ${formatMeters(allocationWidth)}`;
+  allocationMapStatus.classList.toggle("error", warnings.length > 0);
+}
+
+function getAllocationSlots(pallets) {
+  const slots = new Set(
+    pallets
+      .map((pallet) => normalizeMapPosition(pallet.layout_position))
+      .filter(Boolean)
+  );
+  if (!slots.size) {
+    return ["1"];
+  }
+  return Array.from(slots).sort(comparePositionValues);
+}
+
+function compareAllocationPallets(left, right) {
+  const positionCompare = comparePositionValues(
+    normalizeMapPosition(left.layout_position),
+    normalizeMapPosition(right.layout_position)
+  );
+  if (positionCompare) return positionCompare;
+  return rowSortValue(left.layout_row) - rowSortValue(right.layout_row)
+    || String(left.pallet_code || "").localeCompare(String(right.pallet_code || ""));
+}
+
+function comparePositionValues(left, right) {
+  const leftParts = String(left || "9999").split(".").map((part) => Number(part) || 0);
+  const rightParts = String(right || "9999").split(".").map((part) => Number(part) || 0);
+  const max = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < max; index += 1) {
+    const diff = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (diff) return diff;
+  }
+  return 0;
+}
+
+function normalizeMapPosition(value) {
+  return String(value || "").trim() || "1";
+}
+
+function rowSortValue(row) {
+  return { PREPAK: 1, LUZ: 2, MIESZANE: 3, NIEOKRESLONE: 4 }[row] || 5;
+}
+
+function buildMeterTicks(lengthMeters, axis, marginLeft, marginTop, scale, crossMeters) {
+  const ticks = [];
+  const wholeMeters = Math.ceil(lengthMeters);
+  for (let meter = 0; meter <= wholeMeters; meter += 1) {
+    const value = Math.min(meter, lengthMeters);
+    if (axis === "x") {
+      const x = marginLeft + value * scale;
+      ticks.push(`<line class="map-ruler" x1="${x}" y1="${marginTop + crossMeters * scale + 8}" x2="${x}" y2="${marginTop + crossMeters * scale + 20}"></line>`);
+      ticks.push(`<text class="map-ruler-text" x="${x - 6}" y="${marginTop + crossMeters * scale + 36}">${meter}m</text>`);
+    } else {
+      const y = marginTop + value * scale;
+      ticks.push(`<line class="map-ruler" x1="${marginLeft - 20}" y1="${y}" x2="${marginLeft - 8}" y2="${y}"></line>`);
+      ticks.push(`<text class="map-ruler-text" x="${marginLeft - 64}" y="${y + 4}">${meter}m</text>`);
+    }
+  }
+  return ticks.join("");
+}
+
+function clampNumber(value, min, max) {
+  if (Number.isNaN(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function formatMeters(value) {
+  return `${Number(value).toFixed(1).replace(".0", "")} m`;
+}
+
+function shortSkuList(value) {
+  const text = String(value || "");
+  return text.length > 26 ? `${text.slice(0, 24)}...` : text;
+}
+
+function escapeSvg(value) {
+  return escapeHtml(value);
 }
 
 async function createAllocationWorkspace() {
