@@ -74,7 +74,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260603-8"
+APP_VERSION = "20260603-9"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -827,7 +827,6 @@ def remove_allocation_section(
     previous_state = allocation_pallet_snapshot(pallets)
     for pallet in pallets:
         pallet.allocation_status = "usuniete_z_alokacji"
-        pallet.layout_position = None
     add_allocation_event(
         db,
         payload.workspace_id,
@@ -960,8 +959,8 @@ def undo_allocation_event(
 
     action = undo_payload.get("action")
     if action == "restore_pallets":
-        restored = restore_allocation_pallet_snapshot(db, event.workspace_id, undo_payload.get("pallets") or [])
-        undo_description = f"Cofnieto operacje: {event.description} Przywrocono palety: {restored}."
+        restore_allocation_pallet_snapshot(db, event.workspace_id, undo_payload.get("pallets") or [])
+        undo_description = f"Cofnieto operacje: {event.description} Przywrocono zapis ukladu mapy."
     elif action == "delete_delivery":
         delivery_id = undo_payload.get("delivery_id")
         delivery = db.scalar(select(DeliveryImport).where(DeliveryImport.delivery_id == delivery_id)) if delivery_id else None
@@ -1023,7 +1022,6 @@ def list_allocation_pallets(
             select(DeliveryPallet)
             .where(
                 DeliveryPallet.workspace_id == workspace_id,
-                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
             )
             .order_by(DeliveryPallet.delivery_id.desc(), DeliveryPallet.pallet_code)
         )
@@ -1031,7 +1029,11 @@ def list_allocation_pallets(
     rows = []
     for pallet in pallets:
         contents = contents_by_pallet.get(pallet.pallet_code, [])
-        status = allocation_content_status(contents, plan_skus, plan_eans)
+        status = (
+            "usuniete z alokacji"
+            if pallet.allocation_status == "usuniete_z_alokacji"
+            else allocation_content_status(contents, plan_skus, plan_eans)
+        )
         delivery_import = imports_by_delivery.get(pallet.delivery_id)
         rows.append(
             AllocationPalletOut(

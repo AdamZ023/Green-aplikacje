@@ -667,6 +667,7 @@ function renderAllocationMap(pallets, contents = []) {
     return;
   }
 
+  const visiblePallets = pallets.filter((pallet) => !isRemovedAllocationPallet(pallet));
   const palletAlongRow = 0.8;
   const palletDepth = 1.2;
   const aisleWidth = clampNumber(Number(allocationAisleWidth.value || 4), 3, 5);
@@ -680,7 +681,7 @@ function renderAllocationMap(pallets, contents = []) {
   const drawingLength = Math.max(allocationLength, fieldLength || 0, 0.8);
   const drawingWidth = Math.max(allocationWidth, fieldWidth || 0, 2.4);
   const contentsByPallet = groupAllocationContentsByPallet(contents);
-  const palletLabelsByCode = buildAllocationPalletLabels(pallets);
+  const palletLabelsByCode = buildAllocationPalletLabels(visiblePallets);
   const scale = 72;
   const marginLeft = 78;
   const marginTop = 46;
@@ -699,8 +700,8 @@ function renderAllocationMap(pallets, contents = []) {
   };
 
   const slotByPosition = new Map(sortedSlots.map((slot, index) => [slot, index]));
-  const aisleProductLabels = buildAllocationAisleProductLabels(sortedSlots, pallets, contentsByPallet);
-  const paletaSvg = pallets
+  const aisleProductLabels = buildAllocationAisleProductLabels(sortedSlots, visiblePallets, contentsByPallet);
+  const paletaSvg = visiblePallets
     .slice()
     .sort((left, right) => compareAllocationPallets(left, right))
     .map((pallet) => {
@@ -828,6 +829,10 @@ function renderAllocationMap(pallets, contents = []) {
     label.addEventListener("pointerup", finishAllocationSectionDrag);
     label.addEventListener("pointercancel", cancelAllocationSectionDrag);
   });
+}
+
+function isRemovedAllocationPallet(pallet) {
+  return String(pallet.status || "").toLowerCase() === "usuniete z alokacji";
 }
 
 function updateAllocationSectionDrag(event) {
