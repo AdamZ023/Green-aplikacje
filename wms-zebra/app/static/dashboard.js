@@ -1132,23 +1132,48 @@ function renderAllocationDataWindow(kind) {
         th { background: #eef2f5; font-weight: 700; }
         button { min-height: 32px; border: 0; border-radius: 6px; padding: 0 10px; background: #146c5f; color: #fff; cursor: pointer; }
         button:disabled { opacity: 0.55; cursor: not-allowed; }
+        .row-status { display: block; margin-top: 8px; color: #526173; font-size: 13px; font-weight: 700; }
+        .row-status.error { color: #a31515; }
       </style>
     </head>
     <body>
       <h1>${escapeHtml(config.title)}</h1>
       <p>Alokacja: ${escapeHtml(activeAllocationWorkspace || "-")}</p>
-      <p id="popupStatus"></p>
       ${tableHtml}
       <script>
-        const apiKey = ${JSON.stringify(apiKey)};
+        const initialApiKey = ${JSON.stringify(apiKey)};
         const undoUrl = ${JSON.stringify(undoUrl)};
+        function currentApiKey() {
+          if (window.opener && !window.opener.closed) {
+            const input = window.opener.document.querySelector("#apiKey");
+            if (input && input.value) return input.value;
+          }
+          return initialApiKey;
+        }
+        function rowStatus(button) {
+          let status = button.parentElement.querySelector(".row-status");
+          if (!status) {
+            status = document.createElement("span");
+            status.className = "row-status";
+            button.parentElement.appendChild(status);
+          }
+          status.classList.remove("error");
+          return status;
+        }
         document.addEventListener("click", async function(event) {
           const button = event.target.closest("[data-undo-allocation-event]");
           if (!button || button.disabled) return;
           if (!confirm("Cofnac te operacje alokacji?")) return;
-          const status = document.querySelector("#popupStatus");
+          const status = rowStatus(button);
           status.textContent = "Cofanie operacji alokacji...";
           button.disabled = true;
+          const apiKey = currentApiKey();
+          if (!apiKey) {
+            status.textContent = "Brak klucza API w glownym oknie WMS.";
+            status.classList.add("error");
+            button.disabled = false;
+            return;
+          }
           try {
             const response = await fetch(undoUrl, {
               method: "POST",
@@ -1161,6 +1186,7 @@ function renderAllocationDataWindow(kind) {
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
               status.textContent = payload.detail || "Nie mozna cofnac operacji.";
+              status.classList.add("error");
               button.disabled = false;
               return;
             }
