@@ -194,6 +194,21 @@ class AllocationActionOut(BaseModel):
     message: str
 
 
+class AllocationEventOut(BaseModel):
+    id: int
+    workspace_id: str
+    event_type: str
+    description: str
+    source_filename: str | None = None
+    sku: str | None = None
+    color: str | None = None
+    pallet_count: int | None = None
+    carton_count: int | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class AllocationDeliveryOut(BaseModel):
     delivery_id: str
     delivery_ref: str | None = None

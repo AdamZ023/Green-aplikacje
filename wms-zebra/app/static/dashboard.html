@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260603-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-3">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260603-2" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260603-2" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260603-3" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260603-3" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -28,7 +28,7 @@
       <button id="pickingViewButton" type="button">Picking</button>
       <button id="shippingViewButton" type="button">Wysylka</button>
       <button id="allocationViewButton" type="button">Dostawy - Alokacja</button>
-      <a class="button-link" href="/zebra-v2?v=20260603-2">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260603-3">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -335,10 +335,29 @@
             <tbody id="allocationPlanRows"></tbody>
           </table>
         </div>
+
+        <h2>Historia alokacji</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Czas</th>
+                <th>Operacja</th>
+                <th>Opis</th>
+                <th>Plik</th>
+                <th>MDK</th>
+                <th>Kolor</th>
+                <th>Palety</th>
+                <th>Kartony / pozycje</th>
+              </tr>
+            </thead>
+            <tbody id="allocationEventRows"></tbody>
+          </table>
+        </div>
       </section>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260603-2"></script>
+  <script src="/static/dashboard.js?v=20260603-3"></script>
 </body>
 </html>
 

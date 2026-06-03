@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import Base, engine, get_db
 from app.models import (
+    AllocationEvent,
     AllocationPlanItem,
     AllocationWorkspace,
     DeliveryImport,
@@ -32,6 +33,7 @@ from app.schemas import (
     AllocationActionOut,
     AllocationContentOut,
     AllocationDeliveryOut,
+    AllocationEventOut,
     AllocationImportOut,
     AllocationPalletOut,
     AllocationPlanItemOut,
@@ -70,7 +72,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260603-1"
+APP_VERSION = "20260603-3"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -627,6 +629,12 @@ def create_allocation_workspace(
         status="robocza",
     )
     db.add(workspace)
+    add_allocation_event(
+        db,
+        workspace.workspace_id,
+        "utworzenie_alokacji",
+        f"Utworzono alokacje robocza: {workspace.name}.",
+    )
     db.commit()
     db.refresh(workspace)
     return allocation_workspace_out(db, workspace)
@@ -651,7 +659,13 @@ def delete_allocation_workspace(
     payload: AllocationWorkspaceDeleteRequest,
     db: Session = Depends(get_db),
 ) -> AllocationActionOut:
-    ensure_allocation_workspace(db, payload.workspace_id)
+    workspace = ensure_allocation_workspace(db, payload.workspace_id)
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "usuniecie_alokacji",
+        f"Usunieto alokacje robocza: {workspace.name}.",
+    )
     delete_allocation_workspace_rows(db, payload.workspace_id)
     db.commit()
     return AllocationActionOut(message=f"Usunieto alokacje robocza {payload.workspace_id}.")
@@ -673,6 +687,16 @@ async def import_allocation_delivery(request: Request, db: Session = Depends(get
         result = import_delivery_xlsx(db, workspace_id, filename, content)
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    add_allocation_event(
+        db,
+        workspace_id,
+        "import_rozladunku",
+        result.message,
+        source_filename=result.source_filename,
+        pallet_count=parse_count_from_message(result.message, "palet"),
+        carton_count=parse_carton_count_from_message(result.message),
+    )
+    db.commit()
     return result
 
 
@@ -723,6 +747,18 @@ def delete_allocation_delivery(delivery_id: str, db: Session = Depends(get_db)) 
     if not delivery:
         raise HTTPException(status_code=404, detail="Nie znaleziono pliku rozladunku w tej alokacji.")
     source_filename = delivery.source_filename
+    workspace_id = delivery.workspace_id
+    pallet_count = db.scalar(select(func.count(DeliveryPallet.id)).where(DeliveryPallet.delivery_id == delivery_id))
+    carton_count = delivery.total_cartons
+    add_allocation_event(
+        db,
+        workspace_id,
+        "usuniecie_rozladunku",
+        f"Wycofano dostawe z alokacji: {source_filename}.",
+        source_filename=source_filename,
+        pallet_count=int(pallet_count or 0),
+        carton_count=carton_count,
+    )
     delete_delivery_import(db, delivery_id)
     db.commit()
     return AllocationActionOut(message=f"Wycofano dostawe z alokacji: {source_filename}.")
@@ -744,6 +780,15 @@ async def import_allocation_plan(request: Request, db: Session = Depends(get_db)
         result = import_plan_xlsx(db, workspace_id, filename, content)
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    add_allocation_event(
+        db,
+        workspace_id,
+        "import_planu_alokacji",
+        result.message,
+        source_filename=result.source_filename,
+        carton_count=result.imported,
+    )
+    db.commit()
     return result
 
 
@@ -763,6 +808,15 @@ def remove_allocation_section(
     for pallet in pallets:
         pallet.allocation_status = "usuniete_z_alokacji"
         pallet.layout_position = None
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "usuniecie_mdk",
+        f"Usunieto sekcje z rozstawienia: {payload.sku}{f' / {payload.color}' if payload.color else ''}.",
+        sku=payload.sku,
+        color=payload.color,
+        pallet_count=len(pallets),
+    )
     db.commit()
     return AllocationActionOut(message=f"Usunieto sekcje z rozstawienia: {payload.sku}.")
 
@@ -780,7 +834,17 @@ def move_allocation_section(
     pallets = get_section_pallets(db, payload.workspace_id, payload.sku, payload.color)
     if not pallets:
         raise HTTPException(status_code=404, detail="Nie znaleziono sekcji MDK w tej alokacji.")
+    old_positions = ", ".join(sorted({pallet.layout_position or "" for pallet in pallets if pallet.layout_position}))
     set_section_position(pallets, payload.target_position.strip())
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "przeniesienie_mdk",
+        f"Przeniesiono sekcje {payload.sku}{f' / {payload.color}' if payload.color else ''}: {old_positions or '-'} -> {payload.target_position}.",
+        sku=payload.sku,
+        color=payload.color,
+        pallet_count=len(pallets),
+    )
     db.commit()
     return AllocationActionOut(message=f"Przeniesiono sekcje {payload.sku} na pozycje {payload.target_position}.")
 
@@ -796,8 +860,35 @@ def compact_allocation_layout(
 ) -> AllocationActionOut:
     ensure_allocation_workspace(db, payload.workspace_id)
     compact_layout_positions(db, payload.workspace_id)
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "zsuniecie_palet",
+        "Zsunieto palety i usunieto puste miejsca na mapie.",
+    )
     db.commit()
     return AllocationActionOut(message="Zsunieto palety i usunieto puste miejsca na mapie.")
+
+
+@app.get(
+    "/api/allocations/events",
+    response_model=list[AllocationEventOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_events(
+    workspace_id: str = Query(min_length=1),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[AllocationEvent]:
+    ensure_allocation_workspace(db, workspace_id)
+    return list(
+        db.scalars(
+            select(AllocationEvent)
+            .where(AllocationEvent.workspace_id == workspace_id)
+            .order_by(AllocationEvent.created_at.desc(), AllocationEvent.id.desc())
+            .limit(limit)
+        )
+    )
 
 
 @app.get(
@@ -1213,6 +1304,40 @@ def ensure_allocation_workspace(db: Session, workspace_id: str) -> AllocationWor
     if not workspace:
         raise HTTPException(status_code=404, detail="Nie znaleziono alokacji roboczej.")
     return workspace
+
+
+def add_allocation_event(
+    db: Session,
+    workspace_id: str,
+    event_type: str,
+    description: str,
+    source_filename: str | None = None,
+    sku: str | None = None,
+    color: str | None = None,
+    pallet_count: int | None = None,
+    carton_count: int | None = None,
+) -> None:
+    db.add(
+        AllocationEvent(
+            workspace_id=workspace_id,
+            event_type=event_type,
+            description=description[:500],
+            source_filename=source_filename,
+            sku=sku,
+            color=color,
+            pallet_count=pallet_count,
+            carton_count=carton_count,
+        )
+    )
+
+
+def parse_count_from_message(message: str, label: str) -> int | None:
+    match = re.search(rf"(\d+)\s+{re.escape(label)}", message)
+    return int(match.group(1)) if match else None
+
+
+def parse_carton_count_from_message(message: str) -> int | None:
+    return parse_count_from_message(message, "kartonow")
 
 
 def import_delivery_xlsx(

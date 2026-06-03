@@ -10,6 +10,7 @@ const allocationPalletRows = document.querySelector("#allocationPalletRows");
 const allocationContentRows = document.querySelector("#allocationContentRows");
 const allocationPlanRows = document.querySelector("#allocationPlanRows");
 const allocationDeliveryRows = document.querySelector("#allocationDeliveryRows");
+const allocationEventRows = document.querySelector("#allocationEventRows");
 const allocationMap = document.querySelector("#allocationMap");
 const allocationMapStatus = document.querySelector("#allocationMapStatus");
 const allocationContextMenu = document.querySelector("#allocationContextMenu");
@@ -536,23 +537,26 @@ async function loadAllocationDetails(workspaceId) {
   allocationDetails.classList.remove("hidden");
   allocationDetailsTitle.textContent = `Zawartosc alokacji ${workspaceId}`;
   const headers = { "X-API-Key": apiKeyInput.value };
-  const [palletsResponse, contentsResponse, planResponse, deliveriesResponse] = await Promise.all([
+  const [palletsResponse, contentsResponse, planResponse, deliveriesResponse, eventsResponse] = await Promise.all([
     fetch(`/api/allocations/pallets?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
     fetch(`/api/allocations/contents?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
     fetch(`/api/allocations/plan?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
-    fetch(`/api/allocations/deliveries?workspace_id=${encodeURIComponent(workspaceId)}`, { headers })
+    fetch(`/api/allocations/deliveries?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
+    fetch(`/api/allocations/events?workspace_id=${encodeURIComponent(workspaceId)}`, { headers })
   ]);
-  if (!palletsResponse.ok || !contentsResponse.ok || !planResponse.ok || !deliveriesResponse.ok) {
+  if (!palletsResponse.ok || !contentsResponse.ok || !planResponse.ok || !deliveriesResponse.ok || !eventsResponse.ok) {
     allocationPalletRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     allocationContentRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     allocationPlanRows.innerHTML = "<tr><td colspan=\"7\">Brak dostepu albo blad API.</td></tr>";
     allocationDeliveryRows.innerHTML = "<tr><td colspan=\"6\">Brak dostepu albo blad API.</td></tr>";
+    allocationEventRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
   const pallets = await palletsResponse.json();
   const contents = await contentsResponse.json();
   const plan = await planResponse.json();
   const deliveries = await deliveriesResponse.json();
+  const events = await eventsResponse.json();
   allocationPalletCache = pallets;
   allocationContentCache = contents;
   renderAllocationMap(pallets, contents);
@@ -610,6 +614,19 @@ async function loadAllocationDetails(workspaceId) {
       <td>${escapeHtml(item.status)}</td>
     </tr>
   `).join("") : "<tr><td colspan=\"7\">Brak planu alokacji.</td></tr>";
+
+  allocationEventRows.innerHTML = events.length ? events.map((event) => `
+    <tr>
+      <td>${escapeHtml(formatScanTime(event.created_at))}</td>
+      <td>${escapeHtml(formatAllocationEvent(event.event_type))}</td>
+      <td>${escapeHtml(event.description)}</td>
+      <td>${escapeHtml(event.source_filename || "")}</td>
+      <td>${escapeHtml(event.sku || "")}</td>
+      <td>${escapeHtml(event.color || "")}</td>
+      <td>${event.pallet_count ?? ""}</td>
+      <td>${event.carton_count ?? ""}</td>
+    </tr>
+  `).join("") : "<tr><td colspan=\"8\">Brak historii alokacji.</td></tr>";
 }
 
 function updateAllocationMapSettings() {
@@ -703,8 +720,10 @@ function renderAllocationMap(pallets, contents = []) {
     })
     .join("");
   const positionBoundarySvg = sortedSlots.slice(1)
+    .filter((slot, index) => baseMapPosition(slot) !== baseMapPosition(sortedSlots[index]))
     .map((slot, index) => {
-      const x = marginLeft + (index + 1) * palletAlongRow * scale;
+      const slotIndex = sortedSlots.indexOf(slot);
+      const x = marginLeft + slotIndex * palletAlongRow * scale;
       return `<line class="map-position-boundary" x1="${x}" y1="${marginTop}" x2="${x}" y2="${marginTop + drawingWidth * scale}"></line>`;
     })
     .join("");
@@ -888,6 +907,10 @@ function comparePositionValues(left, right) {
 
 function normalizeMapPosition(value) {
   return String(value || "").trim() || "1";
+}
+
+function baseMapPosition(value) {
+  return normalizeMapPosition(value).split(".")[0];
 }
 
 function rowSortValue(row) {
@@ -1281,6 +1304,19 @@ function formatOperation(value) {
     issue: "Wydanie",
     move: "Przesuniecie",
     picking: "Picking"
+  }[value] || value;
+}
+
+function formatAllocationEvent(value) {
+  return {
+    utworzenie_alokacji: "Utworzenie alokacji",
+    usuniecie_alokacji: "Usuniecie alokacji",
+    import_rozladunku: "Import rozladunku",
+    usuniecie_rozladunku: "Usuniecie rozladunku",
+    import_planu_alokacji: "Import planu alokacji",
+    usuniecie_mdk: "Usuniecie MDK",
+    przeniesienie_mdk: "Przeniesienie MDK",
+    zsuniecie_palet: "Zsuniecie palet"
   }[value] || value;
 }
 
