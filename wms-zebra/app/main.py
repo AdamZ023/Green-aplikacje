@@ -1,5 +1,6 @@
 from io import BytesIO
 import csv
+import json
 import re
 from uuid import uuid4
 
@@ -34,6 +35,7 @@ from app.schemas import (
     AllocationContentOut,
     AllocationDeliveryOut,
     AllocationEventOut,
+    AllocationEventUndoRequest,
     AllocationImportOut,
     AllocationPalletOut,
     AllocationPlanItemOut,
@@ -72,7 +74,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260603-3"
+APP_VERSION = "20260603-4"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -133,6 +135,15 @@ else:
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_delivery_pallets_layout_position ON delivery_pallets (layout_position)")
             )
+
+if "allocation_events" in inspector.get_table_names():
+    allocation_event_columns = {column["name"] for column in inspector.get_columns("allocation_events")}
+    with engine.begin() as connection:
+        if "undo_payload" not in allocation_event_columns:
+            connection.execute(text("ALTER TABLE allocation_events ADD COLUMN undo_payload TEXT"))
+        if "undone_at" not in allocation_event_columns:
+            undone_at_type = "TIMESTAMP WITH TIME ZONE" if engine.url.get_backend_name() == "postgresql" else "TIMESTAMP"
+            connection.execute(text(f"ALTER TABLE allocation_events ADD COLUMN undone_at {undone_at_type}"))
 
 app = FastAPI(title="WMS Zebra API", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -687,6 +698,12 @@ async def import_allocation_delivery(request: Request, db: Session = Depends(get
         result = import_delivery_xlsx(db, workspace_id, filename, content)
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    delivery = db.scalar(
+        select(DeliveryImport).where(
+            DeliveryImport.workspace_id == workspace_id,
+            DeliveryImport.source_filename == result.source_filename,
+        )
+    )
     add_allocation_event(
         db,
         workspace_id,
@@ -695,6 +712,7 @@ async def import_allocation_delivery(request: Request, db: Session = Depends(get
         source_filename=result.source_filename,
         pallet_count=parse_count_from_message(result.message, "palet"),
         carton_count=parse_carton_count_from_message(result.message),
+        undo_payload={"action": "delete_delivery", "delivery_id": delivery.delivery_id} if delivery else None,
     )
     db.commit()
     return result
@@ -787,6 +805,7 @@ async def import_allocation_plan(request: Request, db: Session = Depends(get_db)
         result.message,
         source_filename=result.source_filename,
         carton_count=result.imported,
+        undo_payload={"action": "delete_plan", "source_filename": result.source_filename},
     )
     db.commit()
     return result
@@ -805,6 +824,7 @@ def remove_allocation_section(
     pallets = get_section_pallets(db, payload.workspace_id, payload.sku, payload.color)
     if not pallets:
         raise HTTPException(status_code=404, detail="Nie znaleziono sekcji MDK w tej alokacji.")
+    previous_state = allocation_pallet_snapshot(pallets)
     for pallet in pallets:
         pallet.allocation_status = "usuniete_z_alokacji"
         pallet.layout_position = None
@@ -816,6 +836,7 @@ def remove_allocation_section(
         sku=payload.sku,
         color=payload.color,
         pallet_count=len(pallets),
+        undo_payload={"action": "restore_pallets", "pallets": previous_state},
     )
     db.commit()
     return AllocationActionOut(message=f"Usunieto sekcje z rozstawienia: {payload.sku}.")
@@ -834,6 +855,7 @@ def move_allocation_section(
     pallets = get_section_pallets(db, payload.workspace_id, payload.sku, payload.color)
     if not pallets:
         raise HTTPException(status_code=404, detail="Nie znaleziono sekcji MDK w tej alokacji.")
+    previous_state = allocation_pallet_snapshot(pallets)
     old_positions = ", ".join(sorted({pallet.layout_position or "" for pallet in pallets if pallet.layout_position}))
     set_section_position(pallets, payload.target_position.strip())
     add_allocation_event(
@@ -844,6 +866,7 @@ def move_allocation_section(
         sku=payload.sku,
         color=payload.color,
         pallet_count=len(pallets),
+        undo_payload={"action": "restore_pallets", "pallets": previous_state},
     )
     db.commit()
     return AllocationActionOut(message=f"Przeniesiono sekcje {payload.sku} na pozycje {payload.target_position}.")
@@ -859,12 +882,23 @@ def compact_allocation_layout(
     db: Session = Depends(get_db),
 ) -> AllocationActionOut:
     ensure_allocation_workspace(db, payload.workspace_id)
+    pallets = list(
+        db.scalars(
+            select(DeliveryPallet).where(
+                DeliveryPallet.workspace_id == payload.workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
+        )
+    )
+    previous_state = allocation_pallet_snapshot(pallets)
     compact_layout_positions(db, payload.workspace_id)
     add_allocation_event(
         db,
         payload.workspace_id,
         "zsuniecie_palet",
         "Zsunieto palety i usunieto puste miejsca na mapie.",
+        pallet_count=len(pallets),
+        undo_payload={"action": "restore_pallets", "pallets": previous_state},
     )
     db.commit()
     return AllocationActionOut(message="Zsunieto palety i usunieto puste miejsca na mapie.")
@@ -889,6 +923,75 @@ def list_allocation_events(
             .limit(limit)
         )
     )
+
+
+@app.post(
+    "/api/allocations/events/undo",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def undo_allocation_event(
+    payload: AllocationEventUndoRequest,
+    db: Session = Depends(get_db),
+) -> AllocationActionOut:
+    event = db.scalar(select(AllocationEvent).where(AllocationEvent.id == payload.event_id).with_for_update())
+    if not event:
+        raise HTTPException(status_code=404, detail="Nie znaleziono operacji w historii alokacji.")
+    ensure_allocation_workspace(db, event.workspace_id)
+    if not event.undo_payload:
+        raise HTTPException(status_code=400, detail="Tej operacji nie da sie cofnac.")
+    if event.undone_at is not None:
+        raise HTTPException(status_code=400, detail="Ta operacja jest juz cofnieta.")
+
+    try:
+        undo_payload = json.loads(event.undo_payload)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Brak poprawnych danych cofania tej operacji.") from exc
+
+    action = undo_payload.get("action")
+    if action == "restore_pallets":
+        restored = restore_allocation_pallet_snapshot(db, event.workspace_id, undo_payload.get("pallets") or [])
+        undo_description = f"Cofnieto operacje: {event.description} Przywrocono palety: {restored}."
+    elif action == "delete_delivery":
+        delivery_id = undo_payload.get("delivery_id")
+        delivery = db.scalar(select(DeliveryImport).where(DeliveryImport.delivery_id == delivery_id)) if delivery_id else None
+        if not delivery:
+            raise HTTPException(status_code=400, detail="Nie mozna cofnac importu rozladunku, bo dostawa nie istnieje.")
+        source_filename = delivery.source_filename
+        delete_delivery_import(db, delivery.delivery_id)
+        undo_description = f"Cofnieto import rozladunku: {source_filename}."
+    elif action == "delete_plan":
+        source_filename = undo_payload.get("source_filename")
+        if not source_filename:
+            raise HTTPException(status_code=400, detail="Brak pliku planu do cofniecia.")
+        plan_rows = list(
+            db.scalars(
+                select(AllocationPlanItem).where(
+                    AllocationPlanItem.workspace_id == event.workspace_id,
+                    AllocationPlanItem.source_filename == source_filename,
+                )
+            )
+        )
+        for row in plan_rows:
+            db.delete(row)
+        undo_description = f"Cofnieto import planu alokacji: {source_filename}. Usunieto pozycji: {len(plan_rows)}."
+    else:
+        raise HTTPException(status_code=400, detail="Nieznany typ cofania operacji.")
+
+    event.undone_at = scan_timestamp()
+    add_allocation_event(
+        db,
+        event.workspace_id,
+        "cofniecie_operacji",
+        undo_description,
+        source_filename=event.source_filename,
+        sku=event.sku,
+        color=event.color,
+        pallet_count=event.pallet_count,
+        carton_count=event.carton_count,
+    )
+    db.commit()
+    return AllocationActionOut(message=undo_description)
 
 
 @app.get(
@@ -1316,6 +1419,7 @@ def add_allocation_event(
     color: str | None = None,
     pallet_count: int | None = None,
     carton_count: int | None = None,
+    undo_payload: dict | None = None,
 ) -> None:
     db.add(
         AllocationEvent(
@@ -1327,6 +1431,7 @@ def add_allocation_event(
             color=color,
             pallet_count=pallet_count,
             carton_count=carton_count,
+            undo_payload=json.dumps(undo_payload) if undo_payload else None,
         )
     )
 
@@ -1338,6 +1443,43 @@ def parse_count_from_message(message: str, label: str) -> int | None:
 
 def parse_carton_count_from_message(message: str) -> int | None:
     return parse_count_from_message(message, "kartonow")
+
+
+def allocation_pallet_snapshot(pallets: list[DeliveryPallet]) -> list[dict[str, str | None]]:
+    return [
+        {
+            "pallet_code": pallet.pallet_code,
+            "allocation_status": pallet.allocation_status,
+            "layout_row": pallet.layout_row,
+            "layout_position": pallet.layout_position,
+        }
+        for pallet in pallets
+    ]
+
+
+def restore_allocation_pallet_snapshot(
+    db: Session,
+    workspace_id: str,
+    pallet_snapshot: list[dict],
+) -> int:
+    restored = 0
+    for state in pallet_snapshot:
+        pallet_code = str(state.get("pallet_code") or "")
+        if not pallet_code:
+            continue
+        pallet = db.scalar(
+            select(DeliveryPallet).where(
+                DeliveryPallet.workspace_id == workspace_id,
+                DeliveryPallet.pallet_code == pallet_code,
+            )
+        )
+        if not pallet:
+            continue
+        pallet.allocation_status = state.get("allocation_status") or pallet.allocation_status
+        pallet.layout_row = state.get("layout_row")
+        pallet.layout_position = state.get("layout_position")
+        restored += 1
+    return restored
 
 
 def import_delivery_xlsx(

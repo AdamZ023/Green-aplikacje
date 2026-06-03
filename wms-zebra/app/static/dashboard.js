@@ -17,6 +17,10 @@ const allocationContextMenu = document.querySelector("#allocationContextMenu");
 const allocationSectionRemove = document.querySelector("#allocationSectionRemove");
 const allocationSectionMove = document.querySelector("#allocationSectionMove");
 const allocationCompactButton = document.querySelector("#allocationCompactButton");
+const allocationPalletWindowButton = document.querySelector("#allocationPalletWindowButton");
+const allocationContentWindowButton = document.querySelector("#allocationContentWindowButton");
+const allocationPlanWindowButton = document.querySelector("#allocationPlanWindowButton");
+const allocationEventWindowButton = document.querySelector("#allocationEventWindowButton");
 const allocationAisleWidth = document.querySelector("#allocationAisleWidth");
 const allocationPrepackMargin = document.querySelector("#allocationPrepackMargin");
 const allocationLuzMargin = document.querySelector("#allocationLuzMargin");
@@ -65,6 +69,7 @@ let allocationPalletCache = [];
 let allocationContentCache = [];
 let activeAllocationSection = null;
 let draggedAllocationSection = null;
+const allocationDataWindows = {};
 
 allocationAisleWidth.value = localStorage.getItem("wmsAllocationAisleWidth") || "4";
 allocationPrepackMargin.value = localStorage.getItem("wmsAllocationPrepackMargin") || "0";
@@ -98,6 +103,10 @@ finishPickingButton.addEventListener("click", finishPicking);
 allocationCompactButton.addEventListener("click", compactAllocationLayout);
 allocationSectionRemove.addEventListener("click", removeActiveAllocationSection);
 allocationSectionMove.addEventListener("click", moveActiveAllocationSection);
+allocationPalletWindowButton.addEventListener("click", () => openAllocationDataWindow("pallets"));
+allocationContentWindowButton.addEventListener("click", () => openAllocationDataWindow("contents"));
+allocationPlanWindowButton.addEventListener("click", () => openAllocationDataWindow("plan"));
+allocationEventWindowButton.addEventListener("click", () => openAllocationDataWindow("events"));
 allocationAisleWidth.addEventListener("input", updateAllocationMapSettings);
 allocationPrepackMargin.addEventListener("input", updateAllocationMapSettings);
 allocationLuzMargin.addEventListener("input", updateAllocationMapSettings);
@@ -549,7 +558,7 @@ async function loadAllocationDetails(workspaceId) {
     allocationContentRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     allocationPlanRows.innerHTML = "<tr><td colspan=\"7\">Brak dostepu albo blad API.</td></tr>";
     allocationDeliveryRows.innerHTML = "<tr><td colspan=\"6\">Brak dostepu albo blad API.</td></tr>";
-    allocationEventRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
+    allocationEventRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
   const pallets = await palletsResponse.json();
@@ -625,8 +634,15 @@ async function loadAllocationDetails(workspaceId) {
       <td>${escapeHtml(event.color || "")}</td>
       <td>${event.pallet_count ?? ""}</td>
       <td>${event.carton_count ?? ""}</td>
+      <td>
+        <button type="button" class="small-button" data-undo-allocation-event="${event.id}" ${event.can_undo ? "" : "disabled"}>Cofnij</button>
+      </td>
     </tr>
-  `).join("") : "<tr><td colspan=\"8\">Brak historii alokacji.</td></tr>";
+  `).join("") : "<tr><td colspan=\"9\">Brak historii alokacji.</td></tr>";
+  allocationEventRows.querySelectorAll("[data-undo-allocation-event]").forEach((button) => {
+    button.addEventListener("click", () => undoAllocationEvent(button.dataset.undoAllocationEvent));
+  });
+  syncAllocationDataWindows();
 }
 
 function updateAllocationMapSettings() {
@@ -1029,6 +1045,106 @@ function normalizeOptionalAllocationField(event) {
   }
 }
 
+async function undoAllocationEvent(eventId) {
+  if (!eventId) return;
+  if (!confirm("Cofnac te operacje alokacji?")) return;
+  allocationStatus.textContent = "Cofanie operacji alokacji...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch("/api/allocations/events/undo", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ event_id: Number(eventId) })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna cofnac operacji.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = payload.message || "Cofnieto operacje.";
+  await loadAllocationWorkspaces();
+}
+
+function openAllocationDataWindow(kind) {
+  const config = allocationWindowConfig(kind);
+  if (!config) return;
+  const existingWindow = allocationDataWindows[kind];
+  if (existingWindow && !existingWindow.closed) {
+    existingWindow.focus();
+    renderAllocationDataWindow(kind);
+    return;
+  }
+  const popup = window.open("", `wms-allocation-${kind}`, "width=1280,height=720,scrollbars=yes,resizable=yes");
+  if (!popup) {
+    allocationStatus.textContent = "Przegladarka zablokowala nowe okno.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationDataWindows[kind] = popup;
+  renderAllocationDataWindow(kind);
+}
+
+function syncAllocationDataWindows() {
+  Object.keys(allocationDataWindows).forEach((kind) => {
+    const popup = allocationDataWindows[kind];
+    if (!popup || popup.closed) {
+      delete allocationDataWindows[kind];
+      return;
+    }
+    renderAllocationDataWindow(kind);
+  });
+}
+
+function renderAllocationDataWindow(kind) {
+  const config = allocationWindowConfig(kind);
+  const popup = allocationDataWindows[kind];
+  if (!config || !popup || popup.closed) return;
+  const tableBody = document.querySelector(config.tableSelector);
+  const table = tableBody?.closest("table");
+  const tableHtml = table ? table.outerHTML : "<p>Brak danych.</p>";
+  popup.document.open();
+  popup.document.write(`
+    <!doctype html>
+    <html lang="pl">
+    <head>
+      <meta charset="utf-8">
+      <title>${escapeHtml(config.title)}</title>
+      <style>
+        body { margin: 16px; color: #18202b; font-family: Arial, Helvetica, sans-serif; }
+        h1 { margin: 0 0 12px; font-size: 22px; }
+        p { color: #5f6b7a; margin: 0 0 12px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { padding: 8px 7px; border-bottom: 1px solid #d7dde5; text-align: left; overflow-wrap: anywhere; vertical-align: top; }
+        th { background: #eef2f5; font-weight: 700; }
+        button { min-height: 32px; border: 0; border-radius: 6px; padding: 0 10px; background: #146c5f; color: #fff; cursor: pointer; }
+        button:disabled { opacity: 0.55; cursor: not-allowed; }
+      </style>
+    </head>
+    <body>
+      <h1>${escapeHtml(config.title)}</h1>
+      <p>Alokacja: ${escapeHtml(activeAllocationWorkspace || "-")}</p>
+      ${tableHtml}
+    </body>
+    </html>
+  `);
+  popup.document.close();
+  popup.document.querySelectorAll("[data-undo-allocation-event]").forEach((button) => {
+    button.addEventListener("click", () => undoAllocationEvent(button.dataset.undoAllocationEvent));
+  });
+}
+
+function allocationWindowConfig(kind) {
+  return {
+    pallets: { title: "Palety pod alokacje", tableSelector: "#allocationPalletRows" },
+    contents: { title: "Zawartosc palet", tableSelector: "#allocationContentRows" },
+    plan: { title: "Plan Alokacji", tableSelector: "#allocationPlanRows" },
+    events: { title: "Historia alokacji", tableSelector: "#allocationEventRows" }
+  }[kind];
+}
+
 async function deleteAllocationWorkspace(workspaceId) {
   if (!workspaceId) return;
   if (!confirm(`Usunac cala alokacje robocza ${workspaceId}? Znikna jej rozladunki, plan i ustawienie palet.`)) return;
@@ -1316,7 +1432,8 @@ function formatAllocationEvent(value) {
     import_planu_alokacji: "Import planu alokacji",
     usuniecie_mdk: "Usuniecie MDK",
     przeniesienie_mdk: "Przeniesienie MDK",
-    zsuniecie_palet: "Zsuniecie palet"
+    zsuniecie_palet: "Zsuniecie palet",
+    cofniecie_operacji: "Cofniecie operacji"
   }[value] || value;
 }
 

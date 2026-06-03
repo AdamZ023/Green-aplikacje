@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260603-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-4">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260603-3" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260603-3" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260603-4" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260603-4" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -28,7 +28,7 @@
       <button id="pickingViewButton" type="button">Picking</button>
       <button id="shippingViewButton" type="button">Wysylka</button>
       <button id="allocationViewButton" type="button">Dostawy - Alokacja</button>
-      <a class="button-link" href="/zebra-v2?v=20260603-3">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260603-4">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -278,6 +278,13 @@
           <button id="allocationSectionMove" type="button">Przenies</button>
         </div>
 
+        <div class="section-actions allocation-window-actions">
+          <button id="allocationPalletWindowButton" type="button" class="secondary">Palety pod alokacje</button>
+          <button id="allocationContentWindowButton" type="button" class="secondary">Zawartosc palet</button>
+          <button id="allocationPlanWindowButton" type="button" class="secondary">Plan Alokacji</button>
+          <button id="allocationEventWindowButton" type="button" class="secondary">Historia alokacji</button>
+        </div>
+
         <h2>Palety pod alokacje</h2>
         <div class="table-wrap">
           <table>
@@ -349,6 +356,7 @@
                 <th>Kolor</th>
                 <th>Palety</th>
                 <th>Kartony / pozycje</th>
+                <th>Akcje</th>
               </tr>
             </thead>
             <tbody id="allocationEventRows"></tbody>
@@ -357,7 +365,7 @@
       </section>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260603-3"></script>
+  <script src="/static/dashboard.js?v=20260603-4"></script>
 </body>
 </html>
 

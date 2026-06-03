@@ -194,6 +194,10 @@ class AllocationActionOut(BaseModel):
     message: str
 
 
+class AllocationEventUndoRequest(BaseModel):
+    event_id: int
+
+
 class AllocationEventOut(BaseModel):
     id: int
     workspace_id: str
@@ -204,6 +208,8 @@ class AllocationEventOut(BaseModel):
     color: str | None = None
     pallet_count: int | None = None
     carton_count: int | None = None
+    can_undo: bool = False
+    undone_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

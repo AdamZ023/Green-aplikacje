@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -118,7 +118,13 @@ class AllocationEvent(Base):
     color: Mapped[str | None] = mapped_column(String(120), nullable=True)
     pallet_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     carton_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    undo_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self.undo_payload) and self.undone_at is None and self.event_type != "cofniecie_operacji"
 
 
 class DeliveryImport(Base):
