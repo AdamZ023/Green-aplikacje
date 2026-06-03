@@ -63,6 +63,7 @@ let activePickingStatus = "";
 let allocationPalletCache = [];
 let allocationContentCache = [];
 let activeAllocationSection = null;
+let draggedAllocationSection = null;
 
 allocationAisleWidth.value = localStorage.getItem("wmsAllocationAisleWidth") || "4";
 allocationPrepackMargin.value = localStorage.getItem("wmsAllocationPrepackMargin") || "0";
@@ -701,13 +702,19 @@ function renderAllocationMap(pallets, contents = []) {
       `;
     })
     .join("");
+  const positionBoundarySvg = sortedSlots.slice(1)
+    .map((slot, index) => {
+      const x = marginLeft + (index + 1) * palletAlongRow * scale;
+      return `<line class="map-position-boundary" x1="${x}" y1="${marginTop}" x2="${x}" y2="${marginTop + drawingWidth * scale}"></line>`;
+    })
+    .join("");
 
   const meterTicksX = buildMeterTicks(drawingLength, "x", marginLeft, marginTop, scale, drawingWidth);
   const meterTicksY = buildMeterTicks(drawingWidth, "y", marginLeft, marginTop, scale, drawingLength);
   const fieldRect = fieldLength > 0 && fieldWidth > 0
     ? `<rect class="field-limit" x="${marginLeft}" y="${marginTop}" width="${fieldLength * scale}" height="${fieldWidth * scale}"></rect>`
     : "";
-  const aisleTextY = aisleY + aisleWidth * scale / 2 + 5;
+  const aisleTextY = aisleY + 22;
   const prepackMarginLabel = prepackMargin > 0
     ? `<text class="map-margin-label" x="${marginLeft + 10}" y="${marginTop + prepackMargin * scale / 2 + 5}">Margines PREPAK ${formatMeters(prepackMargin)}</text>`
     : "";
@@ -731,6 +738,7 @@ function renderAllocationMap(pallets, contents = []) {
         ${meterTicksX}
         ${meterTicksY}
         ${paletaSvg}
+        ${positionBoundarySvg}
         <text class="map-axis-label" x="${marginLeft}" y="${svgHeight - 18}">Dlugosc: ${formatMeters(allocationLength)} / pole: ${fieldLength ? formatMeters(fieldLength) : "nie ustawiono"}</text>
         <text class="map-axis-label" x="${marginLeft + 270}" y="${svgHeight - 18}">Szerokosc: ${formatMeters(allocationWidth)} / pole: ${fieldWidth ? formatMeters(fieldWidth) : "nie ustawiono"}</text>
       </svg>
@@ -759,7 +767,90 @@ function renderAllocationMap(pallets, contents = []) {
       allocationContextMenu.style.top = `${event.pageY}px`;
       allocationContextMenu.classList.remove("hidden");
     });
+    label.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      allocationContextMenu.classList.add("hidden");
+      draggedAllocationSection = {
+        sku: label.dataset.sectionSku,
+        color: label.dataset.sectionColor,
+        pointerId: event.pointerId,
+        sourceLabel: label,
+        originalTransform: label.getAttribute("transform"),
+        svg: allocationMap.querySelector("svg"),
+        marginLeft,
+        palletAlongRow,
+        scale,
+        maxPosition: Math.max(sortedSlots.length, 1)
+      };
+      label.classList.add("dragging");
+      label.setPointerCapture(event.pointerId);
+      allocationStatus.textContent = "Przeciagnij sekcje MDK na nowa pozycje i pusc przycisk myszy.";
+      allocationStatus.classList.remove("error");
+    });
+    label.addEventListener("pointermove", updateAllocationSectionDrag);
+    label.addEventListener("pointerup", finishAllocationSectionDrag);
+    label.addEventListener("pointercancel", cancelAllocationSectionDrag);
   });
+}
+
+function updateAllocationSectionDrag(event) {
+  if (!draggedAllocationSection || draggedAllocationSection.pointerId !== event.pointerId) return;
+  const svgPoint = allocationSvgPointFromPointer(event, draggedAllocationSection.svg);
+  if (!svgPoint) return;
+  draggedAllocationSection.sourceLabel?.setAttribute("transform", `translate(${svgPoint.x} ${svgPoint.y}) rotate(-90)`);
+}
+
+async function finishAllocationSectionDrag(event) {
+  if (!draggedAllocationSection || draggedAllocationSection.pointerId !== event.pointerId) return;
+  const section = draggedAllocationSection;
+  draggedAllocationSection = null;
+  section.sourceLabel?.classList.remove("dragging");
+  if (section.originalTransform) {
+    section.sourceLabel?.setAttribute("transform", section.originalTransform);
+  }
+  try {
+    section.sourceLabel?.releasePointerCapture(event.pointerId);
+  } catch {
+    // Pointer capture can already be released by the browser.
+  }
+
+  const targetPosition = allocationPositionFromPointer(event, section);
+  if (!targetPosition) {
+    allocationStatus.textContent = "Nie rozpoznano pozycji docelowej na mapie.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+
+  await postAllocationSectionAction("/api/allocations/sections/move", {
+    sku: section.sku,
+    color: section.color,
+    target_position: targetPosition
+  });
+}
+
+function cancelAllocationSectionDrag(event) {
+  if (!draggedAllocationSection || draggedAllocationSection.pointerId !== event.pointerId) return;
+  draggedAllocationSection.sourceLabel?.classList.remove("dragging");
+  if (draggedAllocationSection.originalTransform) {
+    draggedAllocationSection.sourceLabel?.setAttribute("transform", draggedAllocationSection.originalTransform);
+  }
+  draggedAllocationSection = null;
+}
+
+function allocationPositionFromPointer(event, section) {
+  const svgPoint = allocationSvgPointFromPointer(event, section.svg);
+  if (!svgPoint) return "";
+  const rawPosition = Math.floor((svgPoint.x - section.marginLeft) / (section.palletAlongRow * section.scale)) + 1;
+  return String(clampNumber(rawPosition, 1, section.maxPosition));
+}
+
+function allocationSvgPointFromPointer(event, svg) {
+  if (!svg || !svg.getScreenCTM) return null;
+  const point = svg.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  return point.matrixTransform(svg.getScreenCTM().inverse());
 }
 
 function getAllocationSlots(pallets) {
@@ -971,12 +1062,8 @@ async function removeActiveAllocationSection() {
 async function moveActiveAllocationSection() {
   allocationContextMenu.classList.add("hidden");
   if (!activeAllocationSection || !activeAllocationWorkspace) return;
-  const targetPosition = prompt("Na jaka pozycje przeniesc sekcje? Np. 4");
-  if (!targetPosition) return;
-  await postAllocationSectionAction("/api/allocations/sections/move", {
-    ...activeAllocationSection,
-    target_position: targetPosition.trim()
-  });
+  allocationStatus.textContent = "Zlap etykiete MDK na alejce lewym przyciskiem myszy i przeciagnij ja na nowa pozycje.";
+  allocationStatus.classList.remove("error");
 }
 
 async function compactAllocationLayout() {

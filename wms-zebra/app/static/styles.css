@@ -331,6 +331,13 @@ button:disabled {
   stroke-width: 1;
 }
 
+.map-position-boundary {
+  pointer-events: none;
+  stroke: #8b98a7;
+  stroke-dasharray: 5 5;
+  stroke-width: 1;
+}
+
 .map-pallet rect {
   stroke-width: 2;
 }
@@ -346,6 +353,18 @@ button:disabled {
   font-size: 15px;
   font-weight: 700;
   text-anchor: middle;
+}
+
+.map-product-label {
+  cursor: grab;
+}
+
+.map-product-label.dragging {
+  cursor: grabbing;
+}
+
+.map-product-label.dragging text {
+  fill: var(--danger);
 }
 
 .context-menu {
