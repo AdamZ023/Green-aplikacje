@@ -190,6 +190,33 @@ class AllocationImportOut(BaseModel):
     message: str
 
 
+class AllocationActionOut(BaseModel):
+    message: str
+
+
+class AllocationDeliveryOut(BaseModel):
+    delivery_id: str
+    delivery_ref: str | None = None
+    source_filename: str
+    total_cartons: int
+    pallet_count: int = 0
+    created_at: datetime
+
+
+class AllocationSectionRequest(BaseModel):
+    workspace_id: str = Field(min_length=1, max_length=120)
+    sku: str = Field(min_length=1, max_length=120)
+    color: str | None = Field(default=None, max_length=120)
+
+
+class AllocationSectionMoveRequest(AllocationSectionRequest):
+    target_position: str = Field(min_length=1, max_length=40)
+
+
+class AllocationWorkspaceDeleteRequest(BaseModel):
+    workspace_id: str = Field(min_length=1, max_length=120)
+
+
 class AllocationPalletOut(BaseModel):
     pallet_code: str
     pallet_no: str

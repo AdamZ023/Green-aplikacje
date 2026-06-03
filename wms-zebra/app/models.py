@@ -130,6 +130,8 @@ class DeliveryPallet(Base):
     pallet_code: Mapped[str] = mapped_column(String(120), index=True)
     total_cartons: Mapped[int] = mapped_column(Integer, default=0)
     allocation_status: Mapped[str] = mapped_column(String(60), default="roboczo_pod_alokacje", index=True)
+    layout_row: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    layout_position: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 

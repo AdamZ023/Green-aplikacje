@@ -9,8 +9,13 @@ const allocationWorkspaceRows = document.querySelector("#allocationWorkspaceRows
 const allocationPalletRows = document.querySelector("#allocationPalletRows");
 const allocationContentRows = document.querySelector("#allocationContentRows");
 const allocationPlanRows = document.querySelector("#allocationPlanRows");
+const allocationDeliveryRows = document.querySelector("#allocationDeliveryRows");
 const allocationMap = document.querySelector("#allocationMap");
 const allocationMapStatus = document.querySelector("#allocationMapStatus");
+const allocationContextMenu = document.querySelector("#allocationContextMenu");
+const allocationSectionRemove = document.querySelector("#allocationSectionRemove");
+const allocationSectionMove = document.querySelector("#allocationSectionMove");
+const allocationCompactButton = document.querySelector("#allocationCompactButton");
 const allocationAisleWidth = document.querySelector("#allocationAisleWidth");
 const allocationPrepackMargin = document.querySelector("#allocationPrepackMargin");
 const allocationLuzMargin = document.querySelector("#allocationLuzMargin");
@@ -57,6 +62,7 @@ let activeAllocationWorkspace = localStorage.getItem("wmsAllocationWorkspace") |
 let activePickingStatus = "";
 let allocationPalletCache = [];
 let allocationContentCache = [];
+let activeAllocationSection = null;
 
 allocationAisleWidth.value = localStorage.getItem("wmsAllocationAisleWidth") || "4";
 allocationPrepackMargin.value = localStorage.getItem("wmsAllocationPrepackMargin") || "0";
@@ -87,11 +93,17 @@ document.querySelector("#deliveryImportButton").addEventListener("click", import
 document.querySelector("#allocationPlanImportButton").addEventListener("click", importAllocationPlan);
 cancelPickingButton.addEventListener("click", cancelPicking);
 finishPickingButton.addEventListener("click", finishPicking);
+allocationCompactButton.addEventListener("click", compactAllocationLayout);
+allocationSectionRemove.addEventListener("click", removeActiveAllocationSection);
+allocationSectionMove.addEventListener("click", moveActiveAllocationSection);
 allocationAisleWidth.addEventListener("input", updateAllocationMapSettings);
 allocationPrepackMargin.addEventListener("input", updateAllocationMapSettings);
 allocationLuzMargin.addEventListener("input", updateAllocationMapSettings);
 allocationFieldLength.addEventListener("input", updateAllocationMapSettings);
 allocationFieldWidth.addEventListener("input", updateAllocationMapSettings);
+allocationFieldLength.addEventListener("change", normalizeOptionalAllocationField);
+allocationFieldWidth.addEventListener("change", normalizeOptionalAllocationField);
+document.addEventListener("click", () => allocationContextMenu.classList.add("hidden"));
 
 function showView(name) {
   activeView = name;
@@ -464,13 +476,13 @@ async function loadShipping() {
 
 async function loadAllocationWorkspaces() {
   if (!allocationWorkspaceRows.children.length) {
-    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"8\">Ladowanie...</td></tr>";
+    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"9\">Ladowanie...</td></tr>";
   }
   const response = await fetch("/api/allocations/workspaces", {
     headers: { "X-API-Key": apiKeyInput.value }
   });
   if (!response.ok) {
-    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"8\">Brak dostepu albo blad API.</td></tr>";
+    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     allocationDetails.classList.add("hidden");
     return;
   }
@@ -478,7 +490,7 @@ async function loadAllocationWorkspaces() {
   if (!workspaces.length) {
     activeAllocationWorkspace = "";
     localStorage.removeItem("wmsAllocationWorkspace");
-    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"8\">Brak alokacji roboczych.</td></tr>";
+    allocationWorkspaceRows.innerHTML = "<tr><td colspan=\"9\">Brak alokacji roboczych.</td></tr>";
     allocationDetails.classList.add("hidden");
     return;
   }
@@ -496,6 +508,7 @@ async function loadAllocationWorkspaces() {
       <td>${workspace.confirmed_cartons}</td>
       <td>${workspace.unconfirmed_cartons}</td>
       <td>${workspace.plan_items}</td>
+      <td><button type="button" class="danger-button small-button" data-delete-workspace="${escapeHtml(workspace.workspace_id)}">Usun</button></td>
     </tr>
   `).join("");
   allocationWorkspaceRows.querySelectorAll("[data-workspace-id]").forEach((row) => {
@@ -503,6 +516,12 @@ async function loadAllocationWorkspaces() {
       activeAllocationWorkspace = row.dataset.workspaceId;
       localStorage.setItem("wmsAllocationWorkspace", activeAllocationWorkspace);
       loadAllocationWorkspaces();
+    });
+  });
+  allocationWorkspaceRows.querySelectorAll("[data-delete-workspace]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteAllocationWorkspace(button.dataset.deleteWorkspace);
     });
   });
   await loadAllocationDetails(activeAllocationWorkspace);
@@ -516,23 +535,40 @@ async function loadAllocationDetails(workspaceId) {
   allocationDetails.classList.remove("hidden");
   allocationDetailsTitle.textContent = `Zawartosc alokacji ${workspaceId}`;
   const headers = { "X-API-Key": apiKeyInput.value };
-  const [palletsResponse, contentsResponse, planResponse] = await Promise.all([
+  const [palletsResponse, contentsResponse, planResponse, deliveriesResponse] = await Promise.all([
     fetch(`/api/allocations/pallets?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
     fetch(`/api/allocations/contents?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
-    fetch(`/api/allocations/plan?workspace_id=${encodeURIComponent(workspaceId)}`, { headers })
+    fetch(`/api/allocations/plan?workspace_id=${encodeURIComponent(workspaceId)}`, { headers }),
+    fetch(`/api/allocations/deliveries?workspace_id=${encodeURIComponent(workspaceId)}`, { headers })
   ]);
-  if (!palletsResponse.ok || !contentsResponse.ok || !planResponse.ok) {
+  if (!palletsResponse.ok || !contentsResponse.ok || !planResponse.ok || !deliveriesResponse.ok) {
     allocationPalletRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     allocationContentRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     allocationPlanRows.innerHTML = "<tr><td colspan=\"7\">Brak dostepu albo blad API.</td></tr>";
+    allocationDeliveryRows.innerHTML = "<tr><td colspan=\"6\">Brak dostepu albo blad API.</td></tr>";
     return;
   }
   const pallets = await palletsResponse.json();
   const contents = await contentsResponse.json();
   const plan = await planResponse.json();
+  const deliveries = await deliveriesResponse.json();
   allocationPalletCache = pallets;
   allocationContentCache = contents;
   renderAllocationMap(pallets, contents);
+
+  allocationDeliveryRows.innerHTML = deliveries.length ? deliveries.map((delivery) => `
+    <tr>
+      <td>${escapeHtml(delivery.delivery_ref || "")}</td>
+      <td>${escapeHtml(delivery.source_filename)}</td>
+      <td>${delivery.pallet_count}</td>
+      <td>${delivery.total_cartons}</td>
+      <td>${escapeHtml(formatScanTime(delivery.created_at))}</td>
+      <td><button type="button" class="danger-button small-button" data-delete-delivery="${escapeHtml(delivery.delivery_id)}">Usun</button></td>
+    </tr>
+  `).join("") : "<tr><td colspan=\"6\">Brak plikow rozladunkowych w tej alokacji.</td></tr>";
+  allocationDeliveryRows.querySelectorAll("[data-delete-delivery]").forEach((button) => {
+    button.addEventListener("click", () => deleteAllocationDelivery(button.dataset.deleteDelivery));
+  });
 
   allocationPalletRows.innerHTML = pallets.length ? pallets.map((pallet) => `
     <tr>
@@ -576,6 +612,11 @@ async function loadAllocationDetails(workspaceId) {
 }
 
 function updateAllocationMapSettings() {
+  [allocationFieldLength, allocationFieldWidth].forEach((field) => {
+    if (field.value !== "" && Number(field.value) <= 0) {
+      field.value = "";
+    }
+  });
   localStorage.setItem("wmsAllocationAisleWidth", allocationAisleWidth.value);
   localStorage.setItem("wmsAllocationPrepackMargin", allocationPrepackMargin.value);
   localStorage.setItem("wmsAllocationLuzMargin", allocationLuzMargin.value);
@@ -653,7 +694,7 @@ function renderAllocationMap(pallets, contents = []) {
       const x = marginLeft + (label.startIndex + label.endIndex + 1) * palletAlongRow * scale / 2;
       const y = aisleY + aisleWidth * scale / 2;
       return `
-        <g class="map-product-label" transform="translate(${x} ${y}) rotate(-90)">
+        <g class="map-product-label" data-section-sku="${escapeSvg(label.fullModel)}" data-section-color="${escapeSvg(label.color)}" transform="translate(${x} ${y}) rotate(-90)">
           <text x="0" y="-8">${escapeSvg(label.model)}</text>
           <text x="0" y="12">${escapeSvg(label.color)}</text>
         </g>
@@ -707,6 +748,18 @@ function renderAllocationMap(pallets, contents = []) {
     ? warnings.join(", ")
     : `Wymagane pole: ${formatMeters(allocationLength)} x ${formatMeters(allocationWidth)}`;
   allocationMapStatus.classList.toggle("error", warnings.length > 0);
+  allocationMap.querySelectorAll(".map-product-label").forEach((label) => {
+    label.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      activeAllocationSection = {
+        sku: label.dataset.sectionSku,
+        color: label.dataset.sectionColor
+      };
+      allocationContextMenu.style.left = `${event.pageX}px`;
+      allocationContextMenu.style.top = `${event.pageY}px`;
+      allocationContextMenu.classList.remove("hidden");
+    });
+  });
 }
 
 function getAllocationSlots(pallets) {
@@ -825,14 +878,15 @@ function buildAllocationAisleProductLabels(sortedSlots, pallets, contentsByPalle
   const productBySlot = sortedSlots.map((slot) => {
     const slotPallets = pallets.filter((pallet) => normalizeMapPosition(pallet.layout_position) === slot);
     const slotContents = slotPallets.flatMap((pallet) => contentsByPallet.get(pallet.pallet_code) || []);
-    const model = simplifyAllocationSku(dominantContentValue(slotContents, "sku") || firstSkuFromList(slotPallets[0]?.sku_list));
+    const fullModel = dominantContentValue(slotContents, "sku") || firstSkuFromList(slotPallets[0]?.sku_list);
+    const model = simplifyAllocationSku(fullModel);
     const color = dominantContentValue(slotContents, "color");
-    return { model, color };
+    return { fullModel, model, color };
   });
   const labels = [];
   productBySlot.forEach((product, index) => {
     if (!product.model && !product.color) return;
-    const key = `${product.model}|${product.color}`;
+    const key = `${product.fullModel}|${product.color}`;
     const previous = labels[labels.length - 1];
     if (previous && previous.key === key && previous.endIndex === index - 1) {
       previous.endIndex = index;
@@ -842,6 +896,7 @@ function buildAllocationAisleProductLabels(sortedSlots, pallets, contentsByPalle
       key,
       startIndex: index,
       endIndex: index,
+      fullModel: product.fullModel,
       model: product.model || "-",
       color: product.color || "-"
     });
@@ -851,6 +906,129 @@ function buildAllocationAisleProductLabels(sortedSlots, pallets, contentsByPalle
 
 function escapeSvg(value) {
   return escapeHtml(value);
+}
+
+function normalizeOptionalAllocationField(event) {
+  if (Number(event.target.value || 0) <= 0) {
+    event.target.value = "";
+    updateAllocationMapSettings();
+  }
+}
+
+async function deleteAllocationWorkspace(workspaceId) {
+  if (!workspaceId) return;
+  if (!confirm(`Usunac cala alokacje robocza ${workspaceId}? Znikna jej rozladunki, plan i ustawienie palet.`)) return;
+  allocationStatus.textContent = "Usuwanie alokacji roboczej...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch("/api/allocations/workspaces", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ workspace_id: workspaceId })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna usunac alokacji roboczej.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  if (activeAllocationWorkspace === workspaceId) {
+    activeAllocationWorkspace = "";
+    localStorage.removeItem("wmsAllocationWorkspace");
+  }
+  allocationStatus.textContent = payload.message || "Usunieto alokacje robocza.";
+  await loadAllocationWorkspaces();
+}
+
+async function deleteAllocationDelivery(deliveryId) {
+  if (!deliveryId) return;
+  if (!confirm("Wycofac cala dostawe z tej alokacji roboczej?")) return;
+  allocationStatus.textContent = "Wycofywanie dostawy...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch(`/api/allocations/deliveries/${encodeURIComponent(deliveryId)}`, {
+    method: "DELETE",
+    headers: { "X-API-Key": apiKeyInput.value }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna wycofac dostawy.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = payload.message || "Wycofano dostawe.";
+  await loadAllocationWorkspaces();
+}
+
+async function removeActiveAllocationSection() {
+  allocationContextMenu.classList.add("hidden");
+  if (!activeAllocationSection || !activeAllocationWorkspace) return;
+  if (!confirm(`Usunac z rozstawienia sekcje ${activeAllocationSection.sku}?`)) return;
+  await postAllocationSectionAction("/api/allocations/sections/remove", activeAllocationSection);
+}
+
+async function moveActiveAllocationSection() {
+  allocationContextMenu.classList.add("hidden");
+  if (!activeAllocationSection || !activeAllocationWorkspace) return;
+  const targetPosition = prompt("Na jaka pozycje przeniesc sekcje? Np. 4");
+  if (!targetPosition) return;
+  await postAllocationSectionAction("/api/allocations/sections/move", {
+    ...activeAllocationSection,
+    target_position: targetPosition.trim()
+  });
+}
+
+async function compactAllocationLayout() {
+  if (!activeAllocationWorkspace) {
+    allocationStatus.textContent = "Wybierz alokacje robocza.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = "Zsuwanie palet...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch("/api/allocations/compact", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ workspace_id: activeAllocationWorkspace })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna zsunac palet.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = payload.message || "Zsunieto palety.";
+  await loadAllocationWorkspaces();
+}
+
+async function postAllocationSectionAction(endpoint, sectionPayload) {
+  allocationStatus.textContent = "Aktualizacja mapy alokacji...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({
+      workspace_id: activeAllocationWorkspace,
+      sku: sectionPayload.sku,
+      color: sectionPayload.color || null,
+      target_position: sectionPayload.target_position
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna zaktualizowac sekcji.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = payload.message || "Zaktualizowano sekcje.";
+  await loadAllocationWorkspaces();
 }
 
 async function createAllocationWorkspace() {

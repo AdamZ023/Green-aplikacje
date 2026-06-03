@@ -29,11 +29,16 @@ from app.models import (
     Stock,
 )
 from app.schemas import (
+    AllocationActionOut,
     AllocationContentOut,
+    AllocationDeliveryOut,
     AllocationImportOut,
     AllocationPalletOut,
     AllocationPlanItemOut,
+    AllocationSectionMoveRequest,
+    AllocationSectionRequest,
     AllocationWorkspaceCreate,
+    AllocationWorkspaceDeleteRequest,
     AllocationWorkspaceOut,
     ItemCreate,
     ItemOut,
@@ -65,7 +70,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260602-2"
+APP_VERSION = "20260603-1"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -112,6 +117,20 @@ else:
 
 if "picking_batches" not in inspector.get_table_names():
     PickingBatch.__table__.create(bind=engine)
+
+if "delivery_pallets" not in inspector.get_table_names():
+    DeliveryPallet.__table__.create(bind=engine)
+else:
+    delivery_pallet_columns = {column["name"] for column in inspector.get_columns("delivery_pallets")}
+    with engine.begin() as connection:
+        if "layout_row" not in delivery_pallet_columns:
+            connection.execute(text("ALTER TABLE delivery_pallets ADD COLUMN layout_row VARCHAR(40)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_delivery_pallets_layout_row ON delivery_pallets (layout_row)"))
+        if "layout_position" not in delivery_pallet_columns:
+            connection.execute(text("ALTER TABLE delivery_pallets ADD COLUMN layout_position VARCHAR(40)"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_delivery_pallets_layout_position ON delivery_pallets (layout_position)")
+            )
 
 app = FastAPI(title="WMS Zebra API", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -623,6 +642,21 @@ def list_allocation_workspaces(db: Session = Depends(get_db)) -> list[Allocation
     return [allocation_workspace_out(db, workspace) for workspace in workspaces]
 
 
+@app.delete(
+    "/api/allocations/workspaces",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def delete_allocation_workspace(
+    payload: AllocationWorkspaceDeleteRequest,
+    db: Session = Depends(get_db),
+) -> AllocationActionOut:
+    ensure_allocation_workspace(db, payload.workspace_id)
+    delete_allocation_workspace_rows(db, payload.workspace_id)
+    db.commit()
+    return AllocationActionOut(message=f"Usunieto alokacje robocza {payload.workspace_id}.")
+
+
 @app.post(
     "/api/allocations/delivery-import",
     response_model=AllocationImportOut,
@@ -640,6 +674,58 @@ async def import_allocation_delivery(request: Request, db: Session = Depends(get
     except WmsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return result
+
+
+@app.get(
+    "/api/allocations/deliveries",
+    response_model=list[AllocationDeliveryOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_deliveries(
+    workspace_id: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+) -> list[AllocationDeliveryOut]:
+    ensure_allocation_workspace(db, workspace_id)
+    pallet_counts = dict(
+        db.execute(
+            select(DeliveryPallet.delivery_id, func.count(DeliveryPallet.id))
+            .where(DeliveryPallet.workspace_id == workspace_id)
+            .group_by(DeliveryPallet.delivery_id)
+        ).all()
+    )
+    deliveries = list(
+        db.scalars(
+            select(DeliveryImport)
+            .where(DeliveryImport.workspace_id == workspace_id)
+            .order_by(DeliveryImport.created_at.desc(), DeliveryImport.source_filename)
+        )
+    )
+    return [
+        AllocationDeliveryOut(
+            delivery_id=delivery.delivery_id,
+            delivery_ref=delivery.delivery_ref,
+            source_filename=delivery.source_filename,
+            total_cartons=delivery.total_cartons,
+            pallet_count=int(pallet_counts.get(delivery.delivery_id, 0) or 0),
+            created_at=delivery.created_at,
+        )
+        for delivery in deliveries
+    ]
+
+
+@app.delete(
+    "/api/allocations/deliveries/{delivery_id}",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def delete_allocation_delivery(delivery_id: str, db: Session = Depends(get_db)) -> AllocationActionOut:
+    delivery = db.scalar(select(DeliveryImport).where(DeliveryImport.delivery_id == delivery_id))
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Nie znaleziono pliku rozladunku w tej alokacji.")
+    source_filename = delivery.source_filename
+    delete_delivery_import(db, delivery_id)
+    db.commit()
+    return AllocationActionOut(message=f"Wycofano dostawe z alokacji: {source_filename}.")
 
 
 @app.post(
@@ -661,6 +747,59 @@ async def import_allocation_plan(request: Request, db: Session = Depends(get_db)
     return result
 
 
+@app.post(
+    "/api/allocations/sections/remove",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def remove_allocation_section(
+    payload: AllocationSectionRequest,
+    db: Session = Depends(get_db),
+) -> AllocationActionOut:
+    ensure_allocation_workspace(db, payload.workspace_id)
+    pallets = get_section_pallets(db, payload.workspace_id, payload.sku, payload.color)
+    if not pallets:
+        raise HTTPException(status_code=404, detail="Nie znaleziono sekcji MDK w tej alokacji.")
+    for pallet in pallets:
+        pallet.allocation_status = "usuniete_z_alokacji"
+        pallet.layout_position = None
+    db.commit()
+    return AllocationActionOut(message=f"Usunieto sekcje z rozstawienia: {payload.sku}.")
+
+
+@app.post(
+    "/api/allocations/sections/move",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def move_allocation_section(
+    payload: AllocationSectionMoveRequest,
+    db: Session = Depends(get_db),
+) -> AllocationActionOut:
+    ensure_allocation_workspace(db, payload.workspace_id)
+    pallets = get_section_pallets(db, payload.workspace_id, payload.sku, payload.color)
+    if not pallets:
+        raise HTTPException(status_code=404, detail="Nie znaleziono sekcji MDK w tej alokacji.")
+    set_section_position(pallets, payload.target_position.strip())
+    db.commit()
+    return AllocationActionOut(message=f"Przeniesiono sekcje {payload.sku} na pozycje {payload.target_position}.")
+
+
+@app.post(
+    "/api/allocations/compact",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def compact_allocation_layout(
+    payload: AllocationWorkspaceDeleteRequest,
+    db: Session = Depends(get_db),
+) -> AllocationActionOut:
+    ensure_allocation_workspace(db, payload.workspace_id)
+    compact_layout_positions(db, payload.workspace_id)
+    db.commit()
+    return AllocationActionOut(message="Zsunieto palety i usunieto puste miejsca na mapie.")
+
+
 @app.get(
     "/api/allocations/pallets",
     response_model=list[AllocationPalletOut],
@@ -678,7 +817,10 @@ def list_allocation_pallets(
     pallets = list(
         db.scalars(
             select(DeliveryPallet)
-            .where(DeliveryPallet.workspace_id == workspace_id)
+            .where(
+                DeliveryPallet.workspace_id == workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
             .order_by(DeliveryPallet.delivery_id.desc(), DeliveryPallet.pallet_code)
         )
     )
@@ -695,8 +837,8 @@ def list_allocation_pallets(
                 source_filename=delivery_import.source_filename if delivery_import else None,
                 total_cartons=pallet.total_cartons,
                 status=status,
-                layout_row=layout_by_pallet.get(pallet.pallet_code, {}).get("row"),
-                layout_position=layout_by_pallet.get(pallet.pallet_code, {}).get("position"),
+                layout_row=pallet.layout_row or layout_by_pallet.get(pallet.pallet_code, {}).get("row"),
+                layout_position=pallet.layout_position or layout_by_pallet.get(pallet.pallet_code, {}).get("position"),
                 sku_list=", ".join(sorted({content.sku for content in contents if content.sku})),
                 ean_list=", ".join(sorted({content.ean for content in contents if content.ean})),
             )
@@ -716,12 +858,11 @@ def list_allocation_contents(
     ensure_allocation_workspace(db, workspace_id)
     plan_skus, plan_eans = get_allocation_plan_keys(db, workspace_id)
     imports_by_delivery = get_delivery_imports_by_id(db, workspace_id)
-    contents = list(
-        db.scalars(
-            select(DeliveryPalletContent)
-            .where(DeliveryPalletContent.workspace_id == workspace_id)
-            .order_by(DeliveryPalletContent.delivery_id.desc(), DeliveryPalletContent.pallet_code, DeliveryPalletContent.sku)
-        )
+    contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
+    contents = sorted(
+        [content for rows in contents_by_pallet.values() for content in rows],
+        key=lambda content: (content.delivery_id, content.pallet_code, content.sku),
+        reverse=True,
     )
     rows = []
     for content in contents:
@@ -1268,11 +1409,107 @@ def delete_delivery_import(db: Session, delivery_id: str) -> None:
             db.delete(row)
 
 
+def delete_allocation_workspace_rows(db: Session, workspace_id: str) -> None:
+    for model in (AllocationPlanItem, DeliveryPalletContent, DeliveryPallet, DeliveryImport, AllocationWorkspace):
+        rows = list(db.scalars(select(model).where(model.workspace_id == workspace_id)))
+        for row in rows:
+            db.delete(row)
+
+
+def active_pallet_codes(db: Session, workspace_id: str) -> set[str]:
+    return set(
+        db.scalars(
+            select(DeliveryPallet.pallet_code).where(
+                DeliveryPallet.workspace_id == workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
+        )
+    )
+
+
+def get_section_pallets(
+    db: Session,
+    workspace_id: str,
+    sku: str,
+    color: str | None,
+) -> list[DeliveryPallet]:
+    content_filters = [
+        DeliveryPalletContent.workspace_id == workspace_id,
+        DeliveryPalletContent.sku == sku,
+    ]
+    if color:
+        content_filters.append(DeliveryPalletContent.color == color)
+    pallet_codes = set(db.scalars(select(DeliveryPalletContent.pallet_code).where(*content_filters)))
+    if not pallet_codes:
+        return []
+    pallets = list(
+        db.scalars(
+            select(DeliveryPallet)
+            .where(
+                DeliveryPallet.workspace_id == workspace_id,
+                DeliveryPallet.pallet_code.in_(pallet_codes),
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
+            .order_by(DeliveryPallet.pallet_code)
+        )
+    )
+    contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
+    for pallet in pallets:
+        if not pallet.layout_row:
+            contents = contents_by_pallet.get(pallet.pallet_code, [])
+            pallet.layout_row = allocation_layout_row([content.kind for content in contents])
+    return pallets
+
+
+def set_section_position(pallets: list[DeliveryPallet], target_position: str) -> None:
+    counters: dict[str, int] = {}
+    for pallet in sorted(pallets, key=lambda row: (row.layout_row or "", row.pallet_code)):
+        row_name = pallet.layout_row or "NIEOKRESLONE"
+        counters[row_name] = counters.get(row_name, 0) + 1
+        pallet.layout_position = target_position if counters[row_name] == 1 else f"{target_position}.{counters[row_name]}"
+
+
+def compact_layout_positions(db: Session, workspace_id: str) -> None:
+    contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
+    auto_layout = build_allocation_layout(db, workspace_id, contents_by_pallet)
+    pallets = list(
+        db.scalars(
+            select(DeliveryPallet)
+            .where(
+                DeliveryPallet.workspace_id == workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
+            .order_by(DeliveryPallet.pallet_code)
+        )
+    )
+    pallets.sort(
+        key=lambda pallet: (
+            position_sort_key(pallet.layout_position or auto_layout.get(pallet.pallet_code, {}).get("position")),
+            rowSortBackend(pallet.layout_row or auto_layout.get(pallet.pallet_code, {}).get("row")),
+            pallet.pallet_code,
+        )
+    )
+    grouped_sections: list[tuple[str, str | None, list[DeliveryPallet]]] = []
+    section_by_key: dict[tuple[str, str | None], list[DeliveryPallet]] = {}
+    for pallet in pallets:
+        contents = contents_by_pallet.get(pallet.pallet_code, [])
+        if not pallet.layout_row:
+            pallet.layout_row = allocation_layout_row([content.kind for content in contents])
+        sku = dominant_value([content.sku for content in contents])
+        color = dominant_value([content.color for content in contents])
+        key = (sku, color or None)
+        if key not in section_by_key:
+            section_by_key[key] = []
+            grouped_sections.append((sku, color or None, section_by_key[key]))
+        section_by_key[key].append(pallet)
+    for index, (_sku, _color, section_pallets) in enumerate(grouped_sections, start=1):
+        set_section_position(section_pallets, str(index))
+
+
 def allocation_workspace_out(db: Session, workspace: AllocationWorkspace) -> AllocationWorkspaceOut:
     plan_skus, plan_eans = get_allocation_plan_keys(db, workspace.workspace_id)
-    contents = list(
-        db.scalars(select(DeliveryPalletContent).where(DeliveryPalletContent.workspace_id == workspace.workspace_id))
-    )
+    contents_by_pallet = get_allocation_contents_by_pallet(db, workspace.workspace_id)
+    contents = [content for rows in contents_by_pallet.values() for content in rows]
     confirmed = sum(
         content.quantity_cartons
         for content in contents
@@ -1280,7 +1517,10 @@ def allocation_workspace_out(db: Session, workspace: AllocationWorkspace) -> All
     )
     total = sum(content.quantity_cartons for content in contents)
     total_pallets = db.scalar(
-        select(func.count(DeliveryPallet.id)).where(DeliveryPallet.workspace_id == workspace.workspace_id)
+        select(func.count(DeliveryPallet.id)).where(
+            DeliveryPallet.workspace_id == workspace.workspace_id,
+            DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+        )
     )
     plan_items = db.scalar(
         select(func.count(AllocationPlanItem.id)).where(AllocationPlanItem.workspace_id == workspace.workspace_id)
@@ -1373,6 +1613,22 @@ def dominant_value(values: list[str | None]) -> str:
     return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
 
 
+def position_sort_key(value: str | None) -> tuple[int, ...]:
+    if not value:
+        return (9999,)
+    parts = []
+    for part in str(value).split("."):
+        try:
+            parts.append(int(float(part)))
+        except ValueError:
+            parts.append(9999)
+    return tuple(parts)
+
+
+def rowSortBackend(row: str | None) -> int:
+    return {"PREPAK": 1, "LUZ": 2, "MIESZANE": 3, "NIEOKRESLONE": 4}.get(row or "", 5)
+
+
 def get_delivery_imports_by_id(db: Session, workspace_id: str) -> dict[str, DeliveryImport]:
     return {
         row.delivery_id: row
@@ -1380,9 +1636,19 @@ def get_delivery_imports_by_id(db: Session, workspace_id: str) -> dict[str, Deli
     }
 
 
-def get_allocation_contents_by_pallet(db: Session, workspace_id: str) -> dict[str, list[DeliveryPalletContent]]:
+def get_allocation_contents_by_pallet(
+    db: Session,
+    workspace_id: str,
+    include_removed: bool = False,
+) -> dict[str, list[DeliveryPalletContent]]:
+    pallet_codes = active_pallet_codes(db, workspace_id) if not include_removed else None
     contents_by_pallet: dict[str, list[DeliveryPalletContent]] = {}
-    for content in db.scalars(select(DeliveryPalletContent).where(DeliveryPalletContent.workspace_id == workspace_id)):
+    query = select(DeliveryPalletContent).where(DeliveryPalletContent.workspace_id == workspace_id)
+    if pallet_codes is not None:
+        if not pallet_codes:
+            return {}
+        query = query.where(DeliveryPalletContent.pallet_code.in_(pallet_codes))
+    for content in db.scalars(query):
         contents_by_pallet.setdefault(content.pallet_code, []).append(content)
     return contents_by_pallet
 
@@ -1395,7 +1661,8 @@ def get_allocation_plan_keys(db: Session, workspace_id: str) -> tuple[set[str], 
 
 
 def get_allocation_content_keys(db: Session, workspace_id: str) -> tuple[set[str], set[str]]:
-    contents = list(db.scalars(select(DeliveryPalletContent).where(DeliveryPalletContent.workspace_id == workspace_id)))
+    contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
+    contents = [content for rows in contents_by_pallet.values() for content in rows]
     skus = {content.sku for content in contents if content.sku}
     eans = {part for content in contents for part in split_codes(content.ean)}
     return skus, eans

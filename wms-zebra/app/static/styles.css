@@ -150,6 +150,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.small-button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
 .hidden {
   display: none !important;
 }
@@ -224,6 +229,23 @@ button:disabled {
 
 .upload-row output.error {
   color: var(--danger);
+}
+
+.allocation-import-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 16px;
+  max-width: 920px;
+}
+
+.allocation-import-grid button {
+  min-width: 190px;
+}
+
+.allocation-map-actions {
+  justify-content: flex-start;
 }
 
 .allocation-map-controls {
@@ -324,6 +346,25 @@ button:disabled {
   font-size: 15px;
   font-weight: 700;
   text-anchor: middle;
+}
+
+.context-menu {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 8px 22px rgba(24, 32, 43, 0.16);
+}
+
+.context-menu button {
+  justify-content: flex-start;
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .map-pallet.prepak rect {
@@ -999,6 +1040,10 @@ body.scanner-body {
   }
 
   .allocation-map-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .allocation-import-grid {
     grid-template-columns: 1fr;
   }
 }

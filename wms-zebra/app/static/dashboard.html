@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260602-6">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-1">
 </head>
 <body>
-  <a class="qr-launch" href="/zebra-v2?v=20260602-6" aria-label="Otworz skaner">
-    <img src="/scanner-qr.svg?v=20260602-6" alt="QR do skanera">
+  <a class="qr-launch" href="/zebra-v2?v=20260603-1" aria-label="Otworz skaner">
+    <img src="/scanner-qr.svg?v=20260603-1" alt="QR do skanera">
   </a>
 
   <main class="shell">
@@ -28,7 +28,7 @@
       <button id="pickingViewButton" type="button">Picking</button>
       <button id="shippingViewButton" type="button">Wysylka</button>
       <button id="allocationViewButton" type="button">Dostawy - Alokacja</button>
-      <a class="button-link" href="/zebra-v2?v=20260602-6">Skaner</a>
+      <a class="button-link" href="/zebra-v2?v=20260603-1">Skaner</a>
     </section>
 
     <section id="warehouseView" class="dashboard-view">
@@ -206,6 +206,7 @@
               <th>Potwierdzone kartony</th>
               <th>Niepotwierdzone kartony</th>
               <th>Pozycje planu</th>
+              <th>Akcje</th>
             </tr>
           </thead>
           <tbody id="allocationWorkspaceRows"></tbody>
@@ -214,14 +215,40 @@
 
       <section id="allocationDetails" class="history-section hidden">
         <h2 id="allocationDetailsTitle">Zawartosc alokacji</h2>
-        <div class="upload-row">
-          <input id="deliveryFile" type="file" accept=".xlsx">
+        <div class="allocation-import-grid">
+          <label>
+            Plik rozladunku
+            <input id="deliveryFile" type="file" accept=".xlsx">
+          </label>
           <button id="deliveryImportButton" type="button">Importuj rozladunek</button>
-          <input id="allocationPlanFile" type="file" accept=".xlsx">
+          <label>
+            Plik planu alokacji
+            <input id="allocationPlanFile" type="file" accept=".xlsx">
+          </label>
           <button id="allocationPlanImportButton" type="button">Importuj plan alokacji</button>
         </div>
 
+        <h2>Pliki rozladunkowe w alokacji</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Dostawa</th>
+                <th>Plik</th>
+                <th>Palety</th>
+                <th>Kartony</th>
+                <th>Utworzono</th>
+                <th>Akcje</th>
+              </tr>
+            </thead>
+            <tbody id="allocationDeliveryRows"></tbody>
+          </table>
+        </div>
+
         <h2>Mapa alokacji</h2>
+        <div class="section-actions allocation-map-actions">
+          <button id="allocationCompactButton" type="button">Zsun palety</button>
+        </div>
         <div class="allocation-map-controls">
           <label>
             Szerokosc alejki [m]
@@ -246,6 +273,10 @@
           <output id="allocationMapStatus"></output>
         </div>
         <div id="allocationMap" class="allocation-map"></div>
+        <div id="allocationContextMenu" class="context-menu hidden">
+          <button id="allocationSectionRemove" type="button">Usun</button>
+          <button id="allocationSectionMove" type="button">Przenies</button>
+        </div>
 
         <h2>Palety pod alokacje</h2>
         <div class="table-wrap">
@@ -307,7 +338,7 @@
       </section>
     </section>
   </main>
-  <script src="/static/dashboard.js?v=20260602-6"></script>
+  <script src="/static/dashboard.js?v=20260603-1"></script>
 </body>
 </html>
 
