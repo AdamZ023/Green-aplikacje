@@ -1075,7 +1075,7 @@ async function undoAllocationEvent(eventId) {
   await loadAllocationWorkspaces();
 }
 
-window.undoAllocationEventFromWindow = undoAllocationEvent;
+window.refreshAllocationDataFromWindow = loadAllocationWorkspaces;
 
 function openAllocationDataWindow(kind) {
   const config = allocationWindowConfig(kind);
@@ -1114,6 +1114,8 @@ function renderAllocationDataWindow(kind) {
   const tableBody = document.querySelector(config.tableSelector);
   const table = tableBody?.closest("table");
   const tableHtml = table ? table.outerHTML : "<p>Brak danych.</p>";
+  const apiKey = apiKeyInput.value;
+  const undoUrl = `${window.location.origin}/api/allocations/events/undo`;
   popup.document.open();
   popup.document.write(`
     <!doctype html>
@@ -1135,16 +1137,41 @@ function renderAllocationDataWindow(kind) {
     <body>
       <h1>${escapeHtml(config.title)}</h1>
       <p>Alokacja: ${escapeHtml(activeAllocationWorkspace || "-")}</p>
+      <p id="popupStatus"></p>
       ${tableHtml}
       <script>
-        document.addEventListener("click", function(event) {
+        const apiKey = ${JSON.stringify(apiKey)};
+        const undoUrl = ${JSON.stringify(undoUrl)};
+        document.addEventListener("click", async function(event) {
           const button = event.target.closest("[data-undo-allocation-event]");
           if (!button || button.disabled) return;
-          if (!window.opener || window.opener.closed || typeof window.opener.undoAllocationEventFromWindow !== "function") {
-            alert("Otworz glowne okno WMS i sprobuj ponownie.");
-            return;
+          if (!confirm("Cofnac te operacje alokacji?")) return;
+          const status = document.querySelector("#popupStatus");
+          status.textContent = "Cofanie operacji alokacji...";
+          button.disabled = true;
+          try {
+            const response = await fetch(undoUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": apiKey
+              },
+              body: JSON.stringify({ event_id: Number(button.dataset.undoAllocationEvent) })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              status.textContent = payload.detail || "Nie mozna cofnac operacji.";
+              button.disabled = false;
+              return;
+            }
+            status.textContent = payload.message || "Cofnieto operacje.";
+            if (window.opener && !window.opener.closed && typeof window.opener.refreshAllocationDataFromWindow === "function") {
+              await window.opener.refreshAllocationDataFromWindow();
+            }
+          } catch (error) {
+            status.textContent = "Nie mozna polaczyc sie z API.";
+            button.disabled = false;
           }
-          window.opener.undoAllocationEventFromWindow(button.dataset.undoAllocationEvent);
         });
       </script>
     </body>
