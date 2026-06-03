@@ -74,7 +74,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260603-5"
+APP_VERSION = "20260603-6"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -852,12 +852,22 @@ def move_allocation_section(
     db: Session = Depends(get_db),
 ) -> AllocationActionOut:
     ensure_allocation_workspace(db, payload.workspace_id)
-    pallets = get_section_pallets(db, payload.workspace_id, payload.sku, payload.color)
+    active_pallets = list(
+        db.scalars(
+            select(DeliveryPallet).where(
+                DeliveryPallet.workspace_id == payload.workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
+        )
+    )
+    previous_state = allocation_pallet_snapshot(active_pallets)
+    section_before_move = get_section_pallets(db, payload.workspace_id, payload.sku, payload.color)
+    old_positions = ", ".join(
+        sorted({pallet.layout_position or "" for pallet in section_before_move if pallet.layout_position})
+    )
+    pallets = reorder_allocation_section(db, payload.workspace_id, payload.sku, payload.color, payload.target_position)
     if not pallets:
         raise HTTPException(status_code=404, detail="Nie znaleziono sekcji MDK w tej alokacji.")
-    previous_state = allocation_pallet_snapshot(pallets)
-    old_positions = ", ".join(sorted({pallet.layout_position or "" for pallet in pallets if pallet.layout_position}))
-    set_section_position(pallets, payload.target_position.strip())
     add_allocation_event(
         db,
         payload.workspace_id,
@@ -1736,9 +1746,11 @@ def set_section_position(pallets: list[DeliveryPallet], target_position: str) ->
         pallet.layout_position = target_position if counters[row_name] == 1 else f"{target_position}.{counters[row_name]}"
 
 
-def compact_layout_positions(db: Session, workspace_id: str) -> None:
+def allocation_sections(
+    db: Session,
+    workspace_id: str,
+) -> list[tuple[str, str | None, list[DeliveryPallet]]]:
     contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
-    auto_layout = build_allocation_layout(db, workspace_id, contents_by_pallet)
     pallets = list(
         db.scalars(
             select(DeliveryPallet)
@@ -1751,8 +1763,8 @@ def compact_layout_positions(db: Session, workspace_id: str) -> None:
     )
     pallets.sort(
         key=lambda pallet: (
-            position_sort_key(pallet.layout_position or auto_layout.get(pallet.pallet_code, {}).get("position")),
-            rowSortBackend(pallet.layout_row or auto_layout.get(pallet.pallet_code, {}).get("row")),
+            position_sort_key(pallet.layout_position),
+            rowSortBackend(pallet.layout_row),
             pallet.pallet_code,
         )
     )
@@ -1763,12 +1775,50 @@ def compact_layout_positions(db: Session, workspace_id: str) -> None:
         if not pallet.layout_row:
             pallet.layout_row = allocation_layout_row([content.kind for content in contents])
         sku = dominant_value([content.sku for content in contents])
-        color = dominant_value([content.color for content in contents])
-        key = (sku, color or None)
+        color = dominant_value([content.color for content in contents]) or None
+        key = (sku, color)
         if key not in section_by_key:
             section_by_key[key] = []
-            grouped_sections.append((sku, color or None, section_by_key[key]))
+            grouped_sections.append((sku, color, section_by_key[key]))
         section_by_key[key].append(pallet)
+    return grouped_sections
+
+
+def reorder_allocation_section(
+    db: Session,
+    workspace_id: str,
+    sku: str,
+    color: str | None,
+    target_position: str,
+) -> list[DeliveryPallet]:
+    sections = allocation_sections(db, workspace_id)
+    if not sections:
+        return []
+    normalized_color = color or None
+    moving_index = next(
+        (
+            index
+            for index, (section_sku, section_color, _section_pallets) in enumerate(sections)
+            if section_sku == sku and (section_color or None) == normalized_color
+        ),
+        None,
+    )
+    if moving_index is None:
+        return []
+    moving_section = sections.pop(moving_index)
+    try:
+        target_index = int(float(str(target_position).replace(",", "."))) - 1
+    except ValueError:
+        target_index = moving_index
+    target_index = max(0, min(target_index, len(sections)))
+    sections.insert(target_index, moving_section)
+    for index, (_section_sku, _section_color, section_pallets) in enumerate(sections, start=1):
+        set_section_position(section_pallets, str(index))
+    return moving_section[2]
+
+
+def compact_layout_positions(db: Session, workspace_id: str) -> None:
+    grouped_sections = allocation_sections(db, workspace_id)
     for index, (_sku, _color, section_pallets) in enumerate(grouped_sections, start=1):
         set_section_position(section_pallets, str(index))
 

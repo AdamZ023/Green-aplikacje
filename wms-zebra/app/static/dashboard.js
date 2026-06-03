@@ -816,7 +816,8 @@ function renderAllocationMap(pallets, contents = []) {
         marginLeft,
         palletAlongRow,
         scale,
-        maxPosition: Math.max(sortedSlots.length, 1)
+        sectionSlots: aisleProductLabels,
+        maxPosition: Math.max(aisleProductLabels.length, 1)
       };
       label.classList.add("dragging");
       label.setPointerCapture(event.pointerId);
@@ -876,8 +877,14 @@ function cancelAllocationSectionDrag(event) {
 function allocationPositionFromPointer(event, section) {
   const svgPoint = allocationSvgPointFromPointer(event, section.svg);
   if (!svgPoint) return "";
-  const rawPosition = Math.floor((svgPoint.x - section.marginLeft) / (section.palletAlongRow * section.scale)) + 1;
-  return String(clampNumber(rawPosition, 1, section.maxPosition));
+  const rawSlotIndex = Math.max(0, Math.floor((svgPoint.x - section.marginLeft) / (section.palletAlongRow * section.scale)));
+  const sectionSlots = section.sectionSlots || [];
+  const matchedIndex = sectionSlots.findIndex((slot) => rawSlotIndex >= slot.startIndex && rawSlotIndex <= slot.endIndex);
+  if (matchedIndex >= 0) {
+    return String(matchedIndex + 1);
+  }
+  const estimatedPosition = rawSlotIndex + 1;
+  return String(clampNumber(estimatedPosition, 1, section.maxPosition));
 }
 
 function allocationSvgPointFromPointer(event, svg) {
