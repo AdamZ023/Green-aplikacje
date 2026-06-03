@@ -1068,6 +1068,8 @@ async function undoAllocationEvent(eventId) {
   await loadAllocationWorkspaces();
 }
 
+window.undoAllocationEventFromWindow = undoAllocationEvent;
+
 function openAllocationDataWindow(kind) {
   const config = allocationWindowConfig(kind);
   if (!config) return;
@@ -1127,13 +1129,21 @@ function renderAllocationDataWindow(kind) {
       <h1>${escapeHtml(config.title)}</h1>
       <p>Alokacja: ${escapeHtml(activeAllocationWorkspace || "-")}</p>
       ${tableHtml}
+      <script>
+        document.addEventListener("click", function(event) {
+          const button = event.target.closest("[data-undo-allocation-event]");
+          if (!button || button.disabled) return;
+          if (!window.opener || window.opener.closed || typeof window.opener.undoAllocationEventFromWindow !== "function") {
+            alert("Otworz glowne okno WMS i sprobuj ponownie.");
+            return;
+          }
+          window.opener.undoAllocationEventFromWindow(button.dataset.undoAllocationEvent);
+        });
+      </script>
     </body>
     </html>
   `);
   popup.document.close();
-  popup.document.querySelectorAll("[data-undo-allocation-event]").forEach((button) => {
-    button.addEventListener("click", () => undoAllocationEvent(button.dataset.undoAllocationEvent));
-  });
 }
 
 function allocationWindowConfig(kind) {
