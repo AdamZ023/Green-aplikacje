@@ -74,7 +74,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260603-9"
+APP_VERSION = "20260608-1"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -891,22 +891,25 @@ def compact_allocation_layout(
     db: Session = Depends(get_db),
 ) -> AllocationActionOut:
     ensure_allocation_workspace(db, payload.workspace_id)
-    pallets = list(
+    all_pallets = list(
         db.scalars(
             select(DeliveryPallet).where(
                 DeliveryPallet.workspace_id == payload.workspace_id,
-                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
             )
         )
     )
-    previous_state = allocation_pallet_snapshot(pallets)
+    active_pallets = [pallet for pallet in all_pallets if pallet.allocation_status != "usuniete_z_alokacji"]
+    previous_state = allocation_pallet_snapshot(all_pallets)
     compact_layout_positions(db, payload.workspace_id)
+    for pallet in all_pallets:
+        if pallet.allocation_status == "usuniete_z_alokacji":
+            pallet.layout_position = None
     add_allocation_event(
         db,
         payload.workspace_id,
         "zsuniecie_palet",
         "Zsunieto palety i usunieto puste miejsca na mapie.",
-        pallet_count=len(pallets),
+        pallet_count=len(active_pallets),
         undo_payload={"action": "restore_pallets", "pallets": previous_state},
     )
     db.commit()

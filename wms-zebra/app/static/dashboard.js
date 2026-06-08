@@ -903,7 +903,7 @@ function allocationSvgPointFromPointer(event, svg) {
 function getAllocationSlots(pallets) {
   const slots = new Set(
     pallets
-      .map((pallet) => normalizeMapPosition(pallet.layout_position))
+      .map((pallet) => String(pallet.layout_position || "").trim())
       .filter(Boolean)
   );
   if (!slots.size) {
@@ -1085,130 +1085,61 @@ window.refreshAllocationDataFromWindow = loadAllocationWorkspaces;
 function openAllocationDataWindow(kind) {
   const config = allocationWindowConfig(kind);
   if (!config) return;
-  const existingWindow = allocationDataWindows[kind];
-  if (existingWindow && !existingWindow.closed) {
-    existingWindow.focus();
-    renderAllocationDataWindow(kind);
-    return;
+  if (!allocationDataWindows[kind]) {
+    allocationDataWindows[kind] = createAllocationDataPanel(kind, config);
   }
-  const popup = window.open("", `wms-allocation-${kind}`, "width=1280,height=720,scrollbars=yes,resizable=yes");
-  if (!popup) {
-    allocationStatus.textContent = "Przegladarka zablokowala nowe okno.";
-    allocationStatus.classList.add("error");
-    return;
-  }
-  allocationDataWindows[kind] = popup;
+  allocationDataWindows[kind].classList.remove("hidden");
   renderAllocationDataWindow(kind);
 }
 
 function syncAllocationDataWindows() {
   Object.keys(allocationDataWindows).forEach((kind) => {
-    const popup = allocationDataWindows[kind];
-    if (!popup || popup.closed) {
+    const panel = allocationDataWindows[kind];
+    if (!panel || !panel.isConnected) {
       delete allocationDataWindows[kind];
       return;
     }
-    renderAllocationDataWindow(kind);
+    if (!panel.classList.contains("hidden")) {
+      renderAllocationDataWindow(kind);
+    }
   });
+}
+
+function createAllocationDataPanel(kind, config) {
+  const panel = document.createElement("section");
+  panel.className = "allocation-data-panel hidden";
+  panel.dataset.allocationDataPanel = kind;
+  panel.innerHTML = `
+    <div class="allocation-data-panel__header">
+      <div>
+        <h2>${escapeHtml(config.title)}</h2>
+        <p data-allocation-data-workspace></p>
+      </div>
+      <button type="button" class="secondary small-button" data-close-allocation-data>Zamknij</button>
+    </div>
+    <div class="allocation-data-panel__content"></div>
+  `;
+  panel.querySelector("[data-close-allocation-data]").addEventListener("click", () => {
+    panel.classList.add("hidden");
+  });
+  panel.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-undo-allocation-event]");
+    if (!button || button.disabled) return;
+    undoAllocationEvent(button.dataset.undoAllocationEvent);
+  });
+  document.body.appendChild(panel);
+  return panel;
 }
 
 function renderAllocationDataWindow(kind) {
   const config = allocationWindowConfig(kind);
-  const popup = allocationDataWindows[kind];
-  if (!config || !popup || popup.closed) return;
+  const panel = allocationDataWindows[kind];
+  if (!config || !panel || !panel.isConnected) return;
   const tableBody = document.querySelector(config.tableSelector);
   const table = tableBody?.closest("table");
-  const tableHtml = table ? table.outerHTML : "<p>Brak danych.</p>";
-  const apiKey = apiKeyInput.value;
-  const undoUrl = `${window.location.origin}/api/allocations/events/undo`;
-  popup.document.open();
-  popup.document.write(`
-    <!doctype html>
-    <html lang="pl">
-    <head>
-      <meta charset="utf-8">
-      <title>${escapeHtml(config.title)}</title>
-      <style>
-        body { margin: 16px; color: #18202b; font-family: Arial, Helvetica, sans-serif; }
-        h1 { margin: 0 0 12px; font-size: 22px; }
-        p { color: #5f6b7a; margin: 0 0 12px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { padding: 8px 7px; border-bottom: 1px solid #d7dde5; text-align: left; overflow-wrap: anywhere; vertical-align: top; }
-        th { background: #eef2f5; font-weight: 700; }
-        button { min-height: 32px; border: 0; border-radius: 6px; padding: 0 10px; background: #146c5f; color: #fff; cursor: pointer; }
-        button:disabled { opacity: 0.55; cursor: not-allowed; }
-        .row-status { display: block; margin-top: 8px; color: #526173; font-size: 13px; font-weight: 700; }
-        .row-status.error { color: #a31515; }
-      </style>
-    </head>
-    <body>
-      <h1>${escapeHtml(config.title)}</h1>
-      <p>Alokacja: ${escapeHtml(activeAllocationWorkspace || "-")}</p>
-      ${tableHtml}
-      <script>
-        const initialApiKey = ${JSON.stringify(apiKey)};
-        const undoUrl = ${JSON.stringify(undoUrl)};
-        function currentApiKey() {
-          if (window.opener && !window.opener.closed) {
-            const input = window.opener.document.querySelector("#apiKey");
-            if (input && input.value) return input.value;
-          }
-          return initialApiKey;
-        }
-        function rowStatus(button) {
-          let status = button.parentElement.querySelector(".row-status");
-          if (!status) {
-            status = document.createElement("span");
-            status.className = "row-status";
-            button.parentElement.appendChild(status);
-          }
-          status.classList.remove("error");
-          return status;
-        }
-        document.addEventListener("click", async function(event) {
-          const button = event.target.closest("[data-undo-allocation-event]");
-          if (!button || button.disabled) return;
-          if (!confirm("Cofnac te operacje alokacji?")) return;
-          const status = rowStatus(button);
-          status.textContent = "Cofanie operacji alokacji...";
-          button.disabled = true;
-          const apiKey = currentApiKey();
-          if (!apiKey) {
-            status.textContent = "Brak klucza API w glownym oknie WMS.";
-            status.classList.add("error");
-            button.disabled = false;
-            return;
-          }
-          try {
-            const response = await fetch(undoUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-API-Key": apiKey
-              },
-              body: JSON.stringify({ event_id: Number(button.dataset.undoAllocationEvent) })
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              status.textContent = payload.detail || "Nie mozna cofnac operacji.";
-              status.classList.add("error");
-              button.disabled = false;
-              return;
-            }
-            status.textContent = payload.message || "Cofnieto operacje.";
-            if (window.opener && !window.opener.closed && typeof window.opener.refreshAllocationDataFromWindow === "function") {
-              await window.opener.refreshAllocationDataFromWindow();
-            }
-          } catch (error) {
-            status.textContent = "Nie mozna polaczyc sie z API.";
-            button.disabled = false;
-          }
-        });
-      </script>
-    </body>
-    </html>
-  `);
-  popup.document.close();
+  const tableHtml = table ? table.outerHTML.replace(/\s+id="[^"]*"/g, "") : "<p>Brak danych.</p>";
+  panel.querySelector("[data-allocation-data-workspace]").textContent = `Alokacja: ${activeAllocationWorkspace || "-"}`;
+  panel.querySelector(".allocation-data-panel__content").innerHTML = tableHtml;
 }
 
 function allocationWindowConfig(kind) {
