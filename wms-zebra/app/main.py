@@ -74,7 +74,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260608-2"
+APP_VERSION = "20260608-3"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -162,6 +162,11 @@ def scanner() -> FileResponse:
 @app.get("/zebra-v2", include_in_schema=False)
 def zebra_v2() -> FileResponse:
     return FileResponse("app/static/scanner.html", headers=CACHE_HEADERS)
+
+
+@app.get("/allocation-data-window", include_in_schema=False)
+def allocation_data_window() -> FileResponse:
+    return FileResponse("app/static/allocation_window.html", headers=CACHE_HEADERS)
 
 
 @app.get("/scanner-qr.svg", include_in_schema=False)

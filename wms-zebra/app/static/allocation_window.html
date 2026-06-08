@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dane alokacji</title>
+  <style>
+    body { margin: 16px; color: #18202b; font-family: Arial, Helvetica, sans-serif; }
+    h1 { margin: 0 0 12px; font-size: 22px; }
+    p { color: #5f6b7a; margin: 0 0 12px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { padding: 8px 7px; border-bottom: 1px solid #d7dde5; text-align: left; overflow-wrap: anywhere; vertical-align: top; }
+    th { background: #eef2f5; font-weight: 700; }
+    button { min-height: 32px; border: 0; border-radius: 6px; padding: 0 10px; background: #146c5f; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .row-status { display: block; margin-top: 8px; color: #526173; font-size: 13px; font-weight: 700; }
+    .row-status.error { color: #a31515; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Dane alokacji</h1>
+  <p id="workspaceLabel"></p>
+  <div id="status">Ladowanie...</div>
+  <div id="tableWrap"></div>
+  <script src="/static/allocation_window.js?v=20260608-3"></script>
+</body>
+</html>
