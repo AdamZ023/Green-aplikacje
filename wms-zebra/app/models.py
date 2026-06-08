@@ -153,6 +153,10 @@ class DeliveryPallet(Base):
     allocation_status: Mapped[str] = mapped_column(String(60), default="roboczo_pod_alokacje", index=True)
     layout_row: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     layout_position: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    placement_status: Mapped[str] = mapped_column(String(40), default="niezlecone", index=True)
+    placed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    placed_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    placed_scanner_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 

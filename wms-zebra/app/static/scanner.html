@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skaner WMS</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260601-5">
+  <link rel="stylesheet" href="/static/styles.css?v=20260608-4">
 </head>
 <body class="scanner-body">
   <main class="scanner">
@@ -35,6 +35,7 @@
         <button id="chooseReceive" type="button">Przyjecie</button>
         <button id="chooseMove" type="button">Przesuniecie</button>
         <button id="choosePicking" type="button">Picking</button>
+        <button id="choosePlacement" type="button">Rozstawianie</button>
       </div>
       <button id="changeOperator" class="secondary" type="button">Zmien operatora</button>
     </section>
@@ -117,6 +118,31 @@
       </div>
     </section>
 
+    <section id="placementPanel" class="form workflow-panel hidden">
+      <h2>Rozstawianie palet</h2>
+      <output id="placementResult" class="operation-result hidden"></output>
+      <div id="placementWorkspaceChoice">
+        <p>Wybierz alokacje do rozstawienia</p>
+        <div id="placementWorkspaceList" class="picking-batch-list"></div>
+      </div>
+      <div id="placementWork" class="hidden">
+        <div class="scanner-summary">
+          <strong id="placementWorkspaceTitle">Brak alokacji</strong>
+          <span id="placementInstruction">Zeskanuj kod palety.</span>
+        </div>
+        <div id="placementCurrent" class="destination-card hidden">
+          <span>Pozycja docelowa</span>
+          <strong id="placementPositionValue"></strong>
+        </div>
+        <div id="placementMap" class="scanner-placement-map"></div>
+        <div class="actions">
+          <button id="placementRefresh" type="button">Odswiez</button>
+          <button id="placementReset" type="button">Wyczysc</button>
+          <button class="secondary backToOperations" type="button">Wroc</button>
+        </div>
+      </div>
+    </section>
+
     <output id="status" class="status"></output>
     <input
       id="scanCapture"
@@ -130,7 +156,7 @@
       tabindex="-1"
     >
   </main>
-  <script src="/static/scanner.js?v=20260601-5"></script>
+  <script src="/static/scanner.js?v=20260608-4"></script>
 </body>
 </html>
 

@@ -406,6 +406,12 @@ button:disabled {
   stroke: var(--danger);
 }
 
+.map-pallet.placed rect {
+  fill: #c7f0d8;
+  stroke: #1f8a5b;
+  stroke-width: 3;
+}
+
 .operation-grid,
 .mode-tabs {
   display: grid;
@@ -1015,6 +1021,64 @@ body.scanner-body {
 
 .scanner .operation-grid button {
   min-height: 92px;
+}
+
+.scanner-placement-map {
+  display: grid;
+  gap: 8px;
+}
+
+.placement-card {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  align-items: stretch;
+  min-height: 72px;
+  padding: 8px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: #eef1f4;
+  color: #697483;
+  opacity: 0.72;
+}
+
+.placement-card.active {
+  border-color: var(--accent);
+  background: #fff7da;
+  color: var(--text);
+  opacity: 1;
+}
+
+.placement-card.placed {
+  border-color: #1f8a5b;
+  background: #e6f7ef;
+  color: var(--text);
+  opacity: 1;
+}
+
+.placement-card__position {
+  display: grid;
+  place-items: center;
+  border-right: 1px dashed #9aa8b7;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.placement-card__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.placement-card__body strong {
+  overflow-wrap: anywhere;
+  font-size: 17px;
+}
+
+.placement-card__body span {
+  color: inherit;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .scanner .actions {

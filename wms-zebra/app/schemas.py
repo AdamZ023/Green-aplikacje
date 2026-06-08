@@ -249,6 +249,47 @@ class AllocationPalletOut(BaseModel):
     layout_position: str | None = None
     sku_list: str | None = None
     ean_list: str | None = None
+    placement_status: str = "niezlecone"
+    placed_at: datetime | None = None
+    placed_by: str | None = None
+    placed_scanner_id: str | None = None
+
+
+class AllocationPlacementWorkspaceOut(BaseModel):
+    workspace_id: str
+    name: str
+    status: str
+    total_pallets: int
+    placed_pallets: int
+    progress_percent: int
+
+
+class AllocationPlacementPalletOut(BaseModel):
+    pallet_code: str
+    pallet_no: str
+    layout_row: str | None = None
+    layout_position: str | None = None
+    sku_list: str | None = None
+    color_list: str | None = None
+    placement_status: str
+    placed_at: datetime | None = None
+    placed_by: str | None = None
+    placed_scanner_id: str | None = None
+
+
+class AllocationPlacementOrderRequest(BaseModel):
+    workspace_id: str = Field(min_length=1, max_length=120)
+
+
+class AllocationPlacementScanRequest(BaseModel):
+    workspace_id: str = Field(min_length=1, max_length=120)
+    pallet_code: str = Field(min_length=1, max_length=120)
+    scanner_id: str = Field(min_length=1, max_length=120)
+    operator: str | None = Field(default=None, max_length=120)
+
+
+class AllocationPlacementCompleteRequest(AllocationPlacementScanRequest):
+    pass
 
 
 class AllocationContentOut(BaseModel):

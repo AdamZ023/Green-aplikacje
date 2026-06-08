@@ -17,6 +17,7 @@ const allocationContextMenu = document.querySelector("#allocationContextMenu");
 const allocationSectionRemove = document.querySelector("#allocationSectionRemove");
 const allocationSectionMove = document.querySelector("#allocationSectionMove");
 const allocationCompactButton = document.querySelector("#allocationCompactButton");
+const allocationOrderPlacementButton = document.querySelector("#allocationOrderPlacementButton");
 const allocationPalletWindowButton = document.querySelector("#allocationPalletWindowButton");
 const allocationContentWindowButton = document.querySelector("#allocationContentWindowButton");
 const allocationPlanWindowButton = document.querySelector("#allocationPlanWindowButton");
@@ -101,6 +102,7 @@ document.querySelector("#allocationPlanImportButton").addEventListener("click", 
 cancelPickingButton.addEventListener("click", cancelPicking);
 finishPickingButton.addEventListener("click", finishPicking);
 allocationCompactButton.addEventListener("click", compactAllocationLayout);
+allocationOrderPlacementButton.addEventListener("click", orderAllocationPlacement);
 allocationSectionRemove.addEventListener("click", removeActiveAllocationSection);
 allocationSectionMove.addEventListener("click", moveActiveAllocationSection);
 allocationPalletWindowButton.addEventListener("click", () => openAllocationDataWindow("pallets"));
@@ -554,7 +556,7 @@ async function loadAllocationDetails(workspaceId) {
     fetch(`/api/allocations/events?workspace_id=${encodeURIComponent(workspaceId)}`, { headers })
   ]);
   if (!palletsResponse.ok || !contentsResponse.ok || !planResponse.ok || !deliveriesResponse.ok || !eventsResponse.ok) {
-    allocationPalletRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
+    allocationPalletRows.innerHTML = "<tr><td colspan=\"13\">Brak dostepu albo blad API.</td></tr>";
     allocationContentRows.innerHTML = "<tr><td colspan=\"9\">Brak dostepu albo blad API.</td></tr>";
     allocationPlanRows.innerHTML = "<tr><td colspan=\"7\">Brak dostepu albo blad API.</td></tr>";
     allocationDeliveryRows.innerHTML = "<tr><td colspan=\"6\">Brak dostepu albo blad API.</td></tr>";
@@ -595,8 +597,12 @@ async function loadAllocationDetails(workspaceId) {
       <td>${escapeHtml(pallet.ean_list || "")}</td>
       <td>${escapeHtml(pallet.delivery_ref || "")}</td>
       <td>${escapeHtml(pallet.source_filename || "")}</td>
+      <td>${escapeHtml(formatPlacementStatus(pallet.placement_status))}</td>
+      <td>${escapeHtml(pallet.placed_by || "")}</td>
+      <td>${escapeHtml(pallet.placed_scanner_id || "")}</td>
+      <td>${escapeHtml(formatScanTime(pallet.placed_at))}</td>
     </tr>
-  `).join("") : "<tr><td colspan=\"9\">Brak palet w tej alokacji.</td></tr>";
+  `).join("") : "<tr><td colspan=\"13\">Brak palet w tej alokacji.</td></tr>";
 
   allocationContentRows.innerHTML = contents.length ? contents.map((item) => `
     <tr>
@@ -716,8 +722,9 @@ function renderAllocationMap(pallets, contents = []) {
         NIEOKRESLONE: "unknown"
       }[pallet.layout_row] || "unknown";
       const labels = palletLabelsByCode.get(pallet.pallet_code) || [];
+      const placementClass = pallet.placement_status === "odstawiona" ? "placed" : "";
       return `
-        <g class="map-pallet ${cssClass}">
+        <g class="map-pallet ${cssClass} ${placementClass}">
           <rect x="${x}" y="${y}" width="${palletAlongRow * scale}" height="${palletDepth * scale}" rx="4"></rect>
           ${labels.map((line, lineIndex) => `<text x="${x + 7}" y="${y + 18 + lineIndex * 18}">${escapeSvg(line)}</text>`).join("")}
         </g>
@@ -1092,7 +1099,7 @@ function openAllocationDataWindow(kind) {
     return;
   }
   const safeWorkspace = String(activeAllocationWorkspace || "none").replace(/[^a-zA-Z0-9_-]/g, "");
-  const url = `/allocation-data-window?kind=${encodeURIComponent(kind)}&workspace_id=${encodeURIComponent(activeAllocationWorkspace || "")}&v=20260608-3`;
+  const url = `/allocation-data-window?kind=${encodeURIComponent(kind)}&workspace_id=${encodeURIComponent(activeAllocationWorkspace || "")}&v=20260608-4`;
   const popup = window.open(url, `wms-zebra-allocation-${kind}-${safeWorkspace}`, "width=1280,height=720,scrollbars=yes,resizable=yes");
   if (!popup) {
     allocationStatus.textContent = "Przegladarka zablokowala nowe okno.";
@@ -1208,6 +1215,34 @@ async function compactAllocationLayout() {
     return;
   }
   allocationStatus.textContent = payload.message || "Zsunieto palety.";
+  await loadAllocationWorkspaces();
+}
+
+async function orderAllocationPlacement() {
+  if (!activeAllocationWorkspace) {
+    allocationStatus.textContent = "Wybierz alokacje robocza.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  const confirmed = confirm(`Zlecic rozstawienie palet dla alokacji ${activeAllocationWorkspace}?`);
+  if (!confirmed) return;
+  allocationStatus.textContent = "Zlecanie rozstawienia palet...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch("/api/allocations/placement/order", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ workspace_id: activeAllocationWorkspace })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna zlecic rozstawienia.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = payload.message || "Zlecono rozstawienie.";
   await loadAllocationWorkspaces();
 }
 
@@ -1413,8 +1448,19 @@ function formatAllocationEvent(value) {
     usuniecie_mdk: "Usuniecie MDK",
     przeniesienie_mdk: "Przeniesienie MDK",
     zsuniecie_palet: "Zsuniecie palet",
+    zlecenie_rozstawienia: "Zlecenie rozstawienia",
+    skan_palety_rozstawienie: "Skan palety",
+    odstawienie_palety: "Odstawienie palety",
     cofniecie_operacji: "Cofniecie operacji"
   }[value] || value;
+}
+
+function formatPlacementStatus(value) {
+  return {
+    niezlecone: "niezlecone",
+    do_rozstawienia: "do rozstawienia",
+    odstawiona: "odstawiona"
+  }[value] || value || "";
 }
 
 function formatPickingStatus(value) {

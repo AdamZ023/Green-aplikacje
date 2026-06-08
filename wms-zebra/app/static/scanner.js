@@ -11,6 +11,7 @@ const loginButton = document.querySelector("#loginButton");
 const chooseReceive = document.querySelector("#chooseReceive");
 const chooseMove = document.querySelector("#chooseMove");
 const choosePicking = document.querySelector("#choosePicking");
+const choosePlacement = document.querySelector("#choosePlacement");
 const changeOperator = document.querySelector("#changeOperator");
 const receiveQtyButton = document.querySelector("#receiveQtyButton");
 const receiveQtyValue = document.querySelector("#receiveQtyValue");
@@ -29,7 +30,18 @@ const pickingProduct = document.querySelector("#pickingProduct");
 const pickingDetails = document.querySelector("#pickingDetails");
 const pickingDestination = document.querySelector("#pickingDestination");
 const pickingDestinationValue = document.querySelector("#pickingDestinationValue");
+const placementPanel = document.querySelector("#placementPanel");
+const placementResult = document.querySelector("#placementResult");
+const placementWorkspaceChoice = document.querySelector("#placementWorkspaceChoice");
+const placementWorkspaceList = document.querySelector("#placementWorkspaceList");
+const placementWork = document.querySelector("#placementWork");
+const placementWorkspaceTitle = document.querySelector("#placementWorkspaceTitle");
+const placementInstruction = document.querySelector("#placementInstruction");
+const placementCurrent = document.querySelector("#placementCurrent");
+const placementPositionValue = document.querySelector("#placementPositionValue");
+const placementMap = document.querySelector("#placementMap");
 const deviceUid = getOrCreateDeviceUid();
+const PLACEMENT_CONFIRM_CODE = "ODSTAW";
 
 let mode = null;
 let activeTarget = "receiveSku";
@@ -47,6 +59,9 @@ const state = {
 };
 let activePickingTask = null;
 let selectedPickingBatch = null;
+let selectedPlacementWorkspace = null;
+let placementPallets = [];
+let activePlacementPallet = null;
 
 const params = new URLSearchParams(window.location.search);
 const urlApiKey = params.get("key") || params.get("api_key") || "";
@@ -71,6 +86,7 @@ loginButton.addEventListener("click", login);
 chooseReceive.addEventListener("click", openReceive);
 chooseMove.addEventListener("click", openMove);
 choosePicking.addEventListener("click", openPicking);
+choosePlacement.addEventListener("click", openPlacement);
 changeOperator.addEventListener("click", showLogin);
 newScannerIdButton.addEventListener("click", assignNewScannerId);
 
@@ -107,6 +123,8 @@ document.querySelector("#loadPickingTask").addEventListener("click", () => loadP
 document.querySelector("#completePickingTask").addEventListener("click", submitPicking);
 document.querySelector("#finishPickingBatch").addEventListener("click", finishSelectedPicking);
 document.querySelector("#pickingReset").addEventListener("click", resetPickingScans);
+document.querySelector("#placementRefresh").addEventListener("click", loadPlacementPallets);
+document.querySelector("#placementReset").addEventListener("click", resetPlacementScan);
 
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey || event.altKey || event.metaKey) return;
@@ -248,11 +266,26 @@ async function openPicking() {
   await loadPickingBatches();
 }
 
+async function openPlacement() {
+  if (!canWork()) return;
+  hideWorkflows();
+  mode = "placement";
+  placementPanel.classList.remove("hidden");
+  selectedPlacementWorkspace = null;
+  activePlacementPallet = null;
+  placementPallets = [];
+  placementWork.classList.add("hidden");
+  placementWorkspaceChoice.classList.remove("hidden");
+  clearResult(placementResult);
+  await loadPlacementWorkspaces();
+}
+
 function hideWorkflows() {
   operationView.classList.add("hidden");
   receivePanel.classList.add("hidden");
   movePanel.classList.add("hidden");
   pickingPanel.classList.add("hidden");
+  placementPanel.classList.add("hidden");
   mode = null;
 }
 
@@ -308,6 +341,11 @@ async function handleScan(value) {
     } else if (activeTarget === "pickingSku") {
       await submitPicking();
     }
+    return;
+  }
+
+  if (mode === "placement") {
+    await handlePlacementScan(value);
     return;
   }
 
@@ -556,6 +594,163 @@ async function finishSelectedPicking() {
   }
 }
 
+async function loadPlacementWorkspaces() {
+  setStatus("Pobieranie zlecen rozstawiania...", false);
+  placementWorkspaceList.innerHTML = "";
+  const response = await fetch("/api/allocations/placement/workspaces", {
+    headers: { "X-API-Key": apiKey.value }
+  });
+  const workspaces = await response.json().catch(() => []);
+  if (!response.ok) {
+    const message = workspaces?.detail || "Nie mozna pobrac zlecen rozstawiania.";
+    setStatus(message, true);
+    setResult(placementResult, message, true);
+    return;
+  }
+  const activeWorkspaces = workspaces.filter((workspace) => workspace.status !== "rozstawiona");
+  if (!activeWorkspaces.length) {
+    placementWorkspaceList.innerHTML = "<div class=\"empty-batch\">Brak zlecen rozstawiania.</div>";
+    setStatus("Brak zlecen rozstawiania.", false);
+    return;
+  }
+  for (const workspace of activeWorkspaces) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "picking-batch-button";
+    button.innerHTML = `
+      <strong>${escapeHtml(workspace.workspace_id)}</strong>
+      <span>${escapeHtml(workspace.name)} | ${workspace.progress_percent}% | ${workspace.placed_pallets}/${workspace.total_pallets} palet</span>
+    `;
+    button.addEventListener("click", () => selectPlacementWorkspace(workspace));
+    placementWorkspaceList.appendChild(button);
+  }
+  setStatus("Wybierz alokacje do rozstawienia.", false);
+}
+
+async function selectPlacementWorkspace(workspace) {
+  selectedPlacementWorkspace = workspace;
+  activePlacementPallet = null;
+  placementWorkspaceChoice.classList.add("hidden");
+  placementWork.classList.remove("hidden");
+  placementWorkspaceTitle.textContent = `${workspace.workspace_id} | ${workspace.name}`;
+  placementInstruction.textContent = `Skanuj kod palety. Kod odstawienia: ${PLACEMENT_CONFIRM_CODE}.`;
+  clearResult(placementResult);
+  await loadPlacementPallets();
+}
+
+async function loadPlacementPallets() {
+  if (!selectedPlacementWorkspace) return;
+  const response = await fetch(`/api/allocations/placement/pallets?workspace_id=${encodeURIComponent(selectedPlacementWorkspace.workspace_id)}`, {
+    headers: { "X-API-Key": apiKey.value }
+  });
+  const rows = await response.json().catch(() => []);
+  if (!response.ok) {
+    const message = rows?.detail || "Nie mozna pobrac mapy rozstawiania.";
+    setStatus(message, true);
+    setResult(placementResult, message, true);
+    return;
+  }
+  placementPallets = rows;
+  renderPlacementMap();
+  setStatus("Zeskanuj kod palety.", false);
+}
+
+async function handlePlacementScan(value) {
+  if (!selectedPlacementWorkspace) {
+    setStatus("Wybierz alokacje do rozstawienia.", true);
+    return;
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized === PLACEMENT_CONFIRM_CODE) {
+    await completePlacementPallet();
+    return;
+  }
+  await scanPlacementPallet(value.trim());
+}
+
+async function scanPlacementPallet(palletCode) {
+  if (!palletCode) return;
+  const result = await send("/api/allocations/placement/scan", {
+    workspace_id: selectedPlacementWorkspace.workspace_id,
+    pallet_code: palletCode,
+    scanner_id: scannerId.value.trim(),
+    operator: operatorName.value.trim() || null
+  }, placementResult);
+  if (!result.ok) return;
+  activePlacementPallet = result.payload;
+  upsertPlacementPallet(result.payload);
+  renderPlacementMap();
+  const position = result.payload.layout_position || "-";
+  placementCurrent.classList.remove("hidden");
+  placementPositionValue.textContent = position;
+  setResult(placementResult, `Paleta ${result.payload.pallet_code}: ustaw na Poz. ${position}.`, false);
+  setStatus(`Paleta ${result.payload.pallet_code}: Poz. ${position}. Po odstawieniu zeskanuj ${PLACEMENT_CONFIRM_CODE}.`, false);
+}
+
+async function completePlacementPallet() {
+  if (!activePlacementPallet) {
+    setStatus("Najpierw zeskanuj palete.", true);
+    setResult(placementResult, "Nie mozna odstawic: najpierw zeskanuj palete.", true);
+    return;
+  }
+  const result = await send("/api/allocations/placement/complete", {
+    workspace_id: selectedPlacementWorkspace.workspace_id,
+    pallet_code: activePlacementPallet.pallet_code,
+    scanner_id: scannerId.value.trim(),
+    operator: operatorName.value.trim() || null
+  }, placementResult);
+  if (!result.ok) return;
+  activePlacementPallet = result.payload;
+  upsertPlacementPallet(result.payload);
+  renderPlacementMap();
+  setResult(placementResult, `OK: odstawiono palete ${result.payload.pallet_code} na Poz. ${result.payload.layout_position || "-"}.`, false);
+  setStatus("Paleta odstawiona. Zeskanuj kolejna palete.", false);
+  activePlacementPallet = null;
+  placementCurrent.classList.add("hidden");
+}
+
+function upsertPlacementPallet(pallet) {
+  const index = placementPallets.findIndex((row) => row.pallet_code === pallet.pallet_code);
+  if (index >= 0) {
+    placementPallets[index] = pallet;
+  } else {
+    placementPallets.push(pallet);
+  }
+}
+
+function renderPlacementMap() {
+  const activeCode = activePlacementPallet?.pallet_code || "";
+  const sorted = placementPallets.slice().sort((left, right) => comparePositionValues(left.layout_position, right.layout_position)
+    || String(left.pallet_code || "").localeCompare(String(right.pallet_code || "")));
+  if (!sorted.length) {
+    placementMap.innerHTML = "<div class=\"empty-batch\">Brak palet w zleceniu.</div>";
+    return;
+  }
+  placementMap.innerHTML = sorted.map((pallet) => {
+    const isActive = pallet.pallet_code === activeCode;
+    const isPlaced = pallet.placement_status === "odstawiona";
+    return `
+      <div class="placement-card ${isActive ? "active" : ""} ${isPlaced ? "placed" : ""}">
+        <div class="placement-card__position">${escapeHtml(pallet.layout_position || "-")}</div>
+        <div class="placement-card__body">
+          <strong>${escapeHtml(pallet.pallet_code)}</strong>
+          <span>${escapeHtml(simplifyAllocationSku(pallet.sku_list || ""))}</span>
+          <span>${escapeHtml(pallet.color_list || "")}</span>
+          <span>${isPlaced ? `Odstawiona: ${escapeHtml(pallet.placed_by || "")}` : "Do ustawienia"}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function resetPlacementScan() {
+  activePlacementPallet = null;
+  placementCurrent.classList.add("hidden");
+  renderPlacementMap();
+  setStatus("Zeskanuj kod palety.", false);
+  clearResult(placementResult);
+}
+
 async function ensureScannerId() {
   if (scannerId.value.trim() || !apiKey.value.trim()) return;
   await registerScannerId(false);
@@ -734,6 +929,31 @@ function clearResult(element) {
   element.textContent = "";
   element.classList.add("hidden");
   element.classList.remove("error");
+}
+
+function comparePositionValues(left, right) {
+  const leftParts = String(left || "9999").split(".").map((part) => Number(part) || 0);
+  const rightParts = String(right || "9999").split(".").map((part) => Number(part) || 0);
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const diff = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (diff) return diff;
+  }
+  return 0;
+}
+
+function simplifyAllocationSku(value) {
+  return String(value || "").replace(/^GPKS\d*/i, "");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#039;"
+  }[char]));
 }
 
 updateDisplays();

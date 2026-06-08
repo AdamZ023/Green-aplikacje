@@ -38,6 +38,11 @@ from app.schemas import (
     AllocationEventUndoRequest,
     AllocationImportOut,
     AllocationPalletOut,
+    AllocationPlacementCompleteRequest,
+    AllocationPlacementOrderRequest,
+    AllocationPlacementPalletOut,
+    AllocationPlacementScanRequest,
+    AllocationPlacementWorkspaceOut,
     AllocationPlanItemOut,
     AllocationSectionMoveRequest,
     AllocationSectionRequest,
@@ -74,7 +79,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260608-3"
+APP_VERSION = "20260608-4"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
@@ -134,6 +139,22 @@ else:
             connection.execute(text("ALTER TABLE delivery_pallets ADD COLUMN layout_position VARCHAR(40)"))
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_delivery_pallets_layout_position ON delivery_pallets (layout_position)")
+            )
+        if "placement_status" not in delivery_pallet_columns:
+            connection.execute(text("ALTER TABLE delivery_pallets ADD COLUMN placement_status VARCHAR(40) DEFAULT 'niezlecone'"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_delivery_pallets_placement_status ON delivery_pallets (placement_status)")
+            )
+        if "placed_at" not in delivery_pallet_columns:
+            placed_at_type = "TIMESTAMP WITH TIME ZONE" if engine.url.get_backend_name() == "postgresql" else "TIMESTAMP"
+            connection.execute(text(f"ALTER TABLE delivery_pallets ADD COLUMN placed_at {placed_at_type}"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_delivery_pallets_placed_at ON delivery_pallets (placed_at)"))
+        if "placed_by" not in delivery_pallet_columns:
+            connection.execute(text("ALTER TABLE delivery_pallets ADD COLUMN placed_by VARCHAR(120)"))
+        if "placed_scanner_id" not in delivery_pallet_columns:
+            connection.execute(text("ALTER TABLE delivery_pallets ADD COLUMN placed_scanner_id VARCHAR(120)"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_delivery_pallets_placed_scanner_id ON delivery_pallets (placed_scanner_id)")
             )
 
 if "allocation_events" in inspector.get_table_names():
@@ -1055,9 +1076,184 @@ def list_allocation_pallets(
                 layout_position=pallet.layout_position or layout_by_pallet.get(pallet.pallet_code, {}).get("position"),
                 sku_list=", ".join(sorted({content.sku for content in contents if content.sku})),
                 ean_list=", ".join(sorted({content.ean for content in contents if content.ean})),
+                placement_status=pallet.placement_status or "niezlecone",
+                placed_at=pallet.placed_at,
+                placed_by=pallet.placed_by,
+                placed_scanner_id=pallet.placed_scanner_id,
             )
         )
     return rows
+
+
+@app.post(
+    "/api/allocations/placement/order",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def order_allocation_placement(
+    payload: AllocationPlacementOrderRequest,
+    db: Session = Depends(get_db),
+) -> AllocationActionOut:
+    workspace = ensure_allocation_workspace(db, payload.workspace_id)
+    pallets = list(
+        db.scalars(
+            select(DeliveryPallet).where(
+                DeliveryPallet.workspace_id == payload.workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
+        )
+    )
+    if not pallets:
+        raise HTTPException(status_code=400, detail="Brak aktywnych palet do rozstawienia.")
+    for pallet in pallets:
+        if pallet.placement_status != "odstawiona":
+            pallet.placement_status = "do_rozstawienia"
+    workspace.status = "rozstawianie"
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "zlecenie_rozstawienia",
+        f"Zlecono rozstawienie palet wedlug mapy alokacji: {workspace.name}.",
+        pallet_count=len(pallets),
+    )
+    db.commit()
+    return AllocationActionOut(message=f"Zlecono rozstawienie: {workspace.workspace_id}. Palet: {len(pallets)}.")
+
+
+@app.get(
+    "/api/allocations/placement/workspaces",
+    response_model=list[AllocationPlacementWorkspaceOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_placement_workspaces(
+    db: Session = Depends(get_db),
+) -> list[AllocationPlacementWorkspaceOut]:
+    workspaces = list(db.scalars(select(AllocationWorkspace).order_by(AllocationWorkspace.created_at.desc())))
+    rows: list[AllocationPlacementWorkspaceOut] = []
+    for workspace in workspaces:
+        pallets = list(
+            db.scalars(
+                select(DeliveryPallet).where(
+                    DeliveryPallet.workspace_id == workspace.workspace_id,
+                    DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+                    DeliveryPallet.placement_status.in_(("do_rozstawienia", "odstawiona")),
+                )
+            )
+        )
+        if not pallets:
+            continue
+        placed = sum(1 for pallet in pallets if pallet.placement_status == "odstawiona")
+        progress = round(placed * 100 / len(pallets)) if pallets else 0
+        rows.append(
+            AllocationPlacementWorkspaceOut(
+                workspace_id=workspace.workspace_id,
+                name=workspace.name,
+                status="rozstawiona" if placed >= len(pallets) else "w trakcie",
+                total_pallets=len(pallets),
+                placed_pallets=placed,
+                progress_percent=progress,
+            )
+        )
+    return rows
+
+
+@app.get(
+    "/api/allocations/placement/pallets",
+    response_model=list[AllocationPlacementPalletOut],
+    dependencies=[Depends(require_api_key)],
+)
+def list_allocation_placement_pallets(
+    workspace_id: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+) -> list[AllocationPlacementPalletOut]:
+    ensure_allocation_workspace(db, workspace_id)
+    contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
+    layout_by_pallet = build_allocation_layout(db, workspace_id, contents_by_pallet)
+    pallets = list(
+        db.scalars(
+            select(DeliveryPallet)
+            .where(
+                DeliveryPallet.workspace_id == workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+                DeliveryPallet.placement_status.in_(("do_rozstawienia", "odstawiona")),
+            )
+            .order_by(DeliveryPallet.layout_position, DeliveryPallet.pallet_code)
+        )
+    )
+    rows: list[AllocationPlacementPalletOut] = []
+    for pallet in pallets:
+        contents = contents_by_pallet.get(pallet.pallet_code, [])
+        rows.append(allocation_placement_pallet_out(pallet, contents, layout_by_pallet))
+    return rows
+
+
+@app.post(
+    "/api/allocations/placement/scan",
+    response_model=AllocationPlacementPalletOut,
+    dependencies=[Depends(require_api_key)],
+)
+def scan_allocation_placement_pallet(
+    payload: AllocationPlacementScanRequest,
+    db: Session = Depends(get_db),
+) -> AllocationPlacementPalletOut:
+    ensure_allocation_workspace(db, payload.workspace_id)
+    pallet = get_placement_pallet_or_404(db, payload.workspace_id, payload.pallet_code)
+    contents_by_pallet = get_allocation_contents_by_pallet(db, payload.workspace_id)
+    layout_by_pallet = build_allocation_layout(db, payload.workspace_id, contents_by_pallet)
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "skan_palety_rozstawienie",
+        f"Zeskanowano palete do rozstawienia: {pallet.pallet_code}.",
+        sku=dominant_value([content.sku for content in contents_by_pallet.get(pallet.pallet_code, [])]),
+        color=dominant_value([content.color for content in contents_by_pallet.get(pallet.pallet_code, [])]) or None,
+        pallet_count=1,
+    )
+    db.commit()
+    return allocation_placement_pallet_out(pallet, contents_by_pallet.get(pallet.pallet_code, []), layout_by_pallet)
+
+
+@app.post(
+    "/api/allocations/placement/complete",
+    response_model=AllocationPlacementPalletOut,
+    dependencies=[Depends(require_api_key)],
+)
+def complete_allocation_placement_pallet(
+    payload: AllocationPlacementCompleteRequest,
+    db: Session = Depends(get_db),
+) -> AllocationPlacementPalletOut:
+    ensure_allocation_workspace(db, payload.workspace_id)
+    pallet = get_placement_pallet_or_404(db, payload.workspace_id, payload.pallet_code)
+    if pallet.placement_status == "odstawiona":
+        raise HTTPException(status_code=409, detail="Ta paleta jest juz oznaczona jako odstawiona.")
+    pallet.placement_status = "odstawiona"
+    pallet.placed_at = scan_timestamp()
+    pallet.placed_by = payload.operator
+    pallet.placed_scanner_id = payload.scanner_id
+    contents_by_pallet = get_allocation_contents_by_pallet(db, payload.workspace_id)
+    layout_by_pallet = build_allocation_layout(db, payload.workspace_id, contents_by_pallet)
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "odstawienie_palety",
+        f"Odstawiono palete {pallet.pallet_code} na pozycje {pallet.layout_position or layout_by_pallet.get(pallet.pallet_code, {}).get('position') or '-'}.",
+        sku=dominant_value([content.sku for content in contents_by_pallet.get(pallet.pallet_code, [])]),
+        color=dominant_value([content.color for content in contents_by_pallet.get(pallet.pallet_code, [])]) or None,
+        pallet_count=1,
+    )
+    db.flush()
+    remaining = db.scalar(
+        select(func.count(DeliveryPallet.id)).where(
+            DeliveryPallet.workspace_id == payload.workspace_id,
+            DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            DeliveryPallet.placement_status == "do_rozstawienia",
+        )
+    )
+    if not remaining:
+        workspace = ensure_allocation_workspace(db, payload.workspace_id)
+        workspace.status = "rozstawiona"
+    db.commit()
+    return allocation_placement_pallet_out(pallet, contents_by_pallet.get(pallet.pallet_code, []), layout_by_pallet)
 
 
 @app.get(
@@ -1862,6 +2058,41 @@ def allocation_workspace_out(db: Session, workspace: AllocationWorkspace) -> All
         unconfirmed_cartons=max(total - confirmed, 0) if plan_skus or plan_eans else 0,
         plan_items=int(plan_items or 0),
         created_at=workspace.created_at,
+    )
+
+
+def get_placement_pallet_or_404(db: Session, workspace_id: str, pallet_code: str) -> DeliveryPallet:
+    normalized_code = pallet_code.strip().upper()
+    pallet = db.scalar(
+        select(DeliveryPallet).where(
+            DeliveryPallet.workspace_id == workspace_id,
+            func.upper(DeliveryPallet.pallet_code) == normalized_code,
+            DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            DeliveryPallet.placement_status.in_(("do_rozstawienia", "odstawiona")),
+        )
+    )
+    if not pallet:
+        raise HTTPException(status_code=404, detail="Nie znaleziono palety w zleceniu rozstawiania.")
+    return pallet
+
+
+def allocation_placement_pallet_out(
+    pallet: DeliveryPallet,
+    contents: list[DeliveryPalletContent],
+    layout_by_pallet: dict[str, dict[str, str]],
+) -> AllocationPlacementPalletOut:
+    layout = layout_by_pallet.get(pallet.pallet_code, {})
+    return AllocationPlacementPalletOut(
+        pallet_code=pallet.pallet_code,
+        pallet_no=pallet.pallet_no,
+        layout_row=pallet.layout_row or layout.get("row"),
+        layout_position=pallet.layout_position or layout.get("position"),
+        sku_list=", ".join(sorted({content.sku for content in contents if content.sku})),
+        color_list=", ".join(sorted({content.color for content in contents if content.color})),
+        placement_status=pallet.placement_status or "niezlecone",
+        placed_at=pallet.placed_at,
+        placed_by=pallet.placed_by,
+        placed_scanner_id=pallet.placed_scanner_id,
     )
 
 

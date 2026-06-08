@@ -7,8 +7,22 @@
       title: "Palety pod alokacje",
       endpoint: "/api/allocations/pallets",
       empty: "Brak palet w tej alokacji.",
-      headers: ["Paleta", "Status", "Rzad", "Pozycja", "Kartony", "Indeks", "EAN", "Dostawa", "Plik"],
-      row: (item) => [item.pallet_code, item.status, item.layout_row, item.layout_position, item.total_cartons, item.sku_list, item.ean_list, item.delivery_ref, item.source_filename]
+      headers: ["Paleta", "Status", "Rzad", "Pozycja", "Kartony", "Indeks", "EAN", "Dostawa", "Plik", "Rozstawienie", "Operator", "ID skanera", "Odstawiono"],
+      row: (item) => [
+        item.pallet_code,
+        item.status,
+        item.layout_row,
+        item.layout_position,
+        item.total_cartons,
+        item.sku_list,
+        item.ean_list,
+        item.delivery_ref,
+        item.source_filename,
+        formatPlacementStatus(item.placement_status),
+        item.placed_by,
+        item.placed_scanner_id,
+        formatScanTime(item.placed_at)
+      ]
     },
     contents: {
       title: "Zawartosc palet",
@@ -166,7 +180,18 @@
       usuniecie_mdk: "Usuniecie MDK",
       przeniesienie_mdk: "Przeniesienie MDK",
       zsuniecie_palet: "Zsuniecie palet",
+      zlecenie_rozstawienia: "Zlecenie rozstawienia",
+      skan_palety_rozstawienie: "Skan palety",
+      odstawienie_palety: "Odstawienie palety",
       cofniecie_operacji: "Cofniecie operacji"
+    }[value] || value || "";
+  }
+
+  function formatPlacementStatus(value) {
+    return {
+      niezlecone: "niezlecone",
+      do_rozstawienia: "do rozstawienia",
+      odstawiona: "odstawiona"
     }[value] || value || "";
   }
 
