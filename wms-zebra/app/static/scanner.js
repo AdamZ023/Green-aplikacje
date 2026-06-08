@@ -726,21 +726,52 @@ function renderPlacementMap() {
     placementMap.innerHTML = "<div class=\"empty-batch\">Brak palet w zleceniu.</div>";
     return;
   }
-  placementMap.innerHTML = sorted.map((pallet) => {
+  const groups = new Map();
+  for (const pallet of sorted) {
+    const position = pallet.layout_position || "-";
+    if (!groups.has(position)) {
+      groups.set(position, []);
+    }
+    groups.get(position).push(pallet);
+  }
+  placementMap.innerHTML = Array.from(groups.entries()).map(([position, pallets]) => {
+    const prepak = pallets.filter((pallet) => pallet.layout_row === "PREPAK");
+    const luz = pallets.filter((pallet) => pallet.layout_row === "LUZ");
+    const other = pallets.filter((pallet) => !["PREPAK", "LUZ"].includes(pallet.layout_row));
+    const labelSource = pallets[0] || {};
+    const productLabel = [
+      simplifyAllocationSku(labelSource.sku_list || ""),
+      labelSource.color_list || ""
+    ].filter(Boolean).join(" / ");
+    return `
+      <section class="placement-position-block">
+        <div class="placement-position-title">Poz. ${escapeHtml(position)}</div>
+        <div class="placement-row-label">PREPAK</div>
+        <div class="placement-row placement-row--prepak">
+          ${prepak.length ? prepak.map((pallet) => renderPlacementPalletCard(pallet, activeCode)).join("") : "<div class=\"placement-empty-slot\">brak</div>"}
+        </div>
+        <div class="placement-aisle-label">${escapeHtml(productLabel || "Alejka")}</div>
+        <div class="placement-row-label">LUZ</div>
+        <div class="placement-row placement-row--luz">
+          ${luz.length ? luz.map((pallet) => renderPlacementPalletCard(pallet, activeCode)).join("") : "<div class=\"placement-empty-slot\">brak</div>"}
+        </div>
+        ${other.length ? `<div class="placement-row placement-row--other">${other.map((pallet) => renderPlacementPalletCard(pallet, activeCode)).join("")}</div>` : ""}
+      </section>
+    `;
+  }).join("");
+}
+
+function renderPlacementPalletCard(pallet, activeCode) {
     const isActive = pallet.pallet_code === activeCode;
     const isPlaced = pallet.placement_status === "odstawiona";
     return `
       <div class="placement-card ${isActive ? "active" : ""} ${isPlaced ? "placed" : ""}">
-        <div class="placement-card__position">${escapeHtml(pallet.layout_position || "-")}</div>
         <div class="placement-card__body">
           <strong>${escapeHtml(pallet.pallet_code)}</strong>
-          <span>${escapeHtml(simplifyAllocationSku(pallet.sku_list || ""))}</span>
-          <span>${escapeHtml(pallet.color_list || "")}</span>
           <span>${isPlaced ? `Odstawiona: ${escapeHtml(pallet.placed_by || "")}` : "Do ustawienia"}</span>
         </div>
       </div>
     `;
-  }).join("");
 }
 
 function resetPlacementScan() {
