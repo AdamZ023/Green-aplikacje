@@ -510,60 +510,6 @@ button:disabled {
   overflow-x: hidden;
 }
 
-.allocation-data-panel {
-  position: fixed;
-  inset: 28px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 16px 45px rgba(16, 24, 36, 0.22);
-}
-
-.allocation-data-panel__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.allocation-data-panel__header h2 {
-  margin: 0 0 6px;
-}
-
-.allocation-data-panel__header p {
-  margin: 0;
-  color: var(--muted);
-}
-
-.allocation-data-panel__content {
-  overflow: auto;
-  min-height: 0;
-}
-
-.allocation-data-panel table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-.allocation-data-panel th,
-.allocation-data-panel td {
-  padding: 8px 7px;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-  vertical-align: top;
-  overflow-wrap: anywhere;
-}
-
-.allocation-data-panel th {
-  background: #eef2f5;
-}
-
 .dashboard-view table {
   table-layout: fixed;
 }

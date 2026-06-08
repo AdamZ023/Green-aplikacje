@@ -74,7 +74,7 @@ from app.services import (
     scan_timestamp,
 )
 
-APP_VERSION = "20260608-1"
+APP_VERSION = "20260608-2"
 WAREHOUSE_CODE = "9201D"
 PICKING_HEADER_ALIASES = {
     "code": {"ean", "barcode", "kod", "kod kreskowy", "sku", "indeks", "index"},
