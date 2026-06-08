@@ -407,8 +407,8 @@ button:disabled {
 }
 
 .map-pallet.placed rect {
-  fill: #c7f0d8;
-  stroke: #1f8a5b;
+  fill: #dbeafe;
+  stroke: #1d4ed8;
   stroke-width: 3;
 }
 
@@ -1118,8 +1118,8 @@ body.scanner-body {
 }
 
 .placement-card.placed {
-  border-color: #1f8a5b;
-  background: #e6f7ef;
+  border-color: #1d4ed8;
+  background: #dbeafe;
   color: var(--text);
   opacity: 1;
 }
