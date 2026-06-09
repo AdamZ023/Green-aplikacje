@@ -18,6 +18,7 @@ const allocationSectionRemove = document.querySelector("#allocationSectionRemove
 const allocationSectionMove = document.querySelector("#allocationSectionMove");
 const allocationCompactButton = document.querySelector("#allocationCompactButton");
 const allocationOrderPlacementButton = document.querySelector("#allocationOrderPlacementButton");
+const allocationOrderAdHocPlacementButton = document.querySelector("#allocationOrderAdHocPlacementButton");
 const allocationPalletWindowButton = document.querySelector("#allocationPalletWindowButton");
 const allocationContentWindowButton = document.querySelector("#allocationContentWindowButton");
 const allocationPlanWindowButton = document.querySelector("#allocationPlanWindowButton");
@@ -103,6 +104,7 @@ cancelPickingButton.addEventListener("click", cancelPicking);
 finishPickingButton.addEventListener("click", finishPicking);
 allocationCompactButton.addEventListener("click", compactAllocationLayout);
 allocationOrderPlacementButton.addEventListener("click", orderAllocationPlacement);
+allocationOrderAdHocPlacementButton.addEventListener("click", orderAllocationPlacementAdHoc);
 allocationSectionRemove.addEventListener("click", removeActiveAllocationSection);
 allocationSectionMove.addEventListener("click", moveActiveAllocationSection);
 allocationPalletWindowButton.addEventListener("click", () => openAllocationDataWindow("pallets"));
@@ -1243,6 +1245,34 @@ async function orderAllocationPlacement() {
     return;
   }
   allocationStatus.textContent = payload.message || "Zlecono rozstawienie.";
+  await loadAllocationWorkspaces();
+}
+
+async function orderAllocationPlacementAdHoc() {
+  if (!activeAllocationWorkspace) {
+    allocationStatus.textContent = "Wybierz alokacje robocza.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  const confirmed = confirm(`Zlecic rozstawienie Ad Hoc dla alokacji ${activeAllocationWorkspace}? Obecne pozycje rozstawienia i odstawienia zostana wyczyszczone.`);
+  if (!confirmed) return;
+  allocationStatus.textContent = "Zlecanie rozstawienia Ad Hoc...";
+  allocationStatus.classList.remove("error");
+  const response = await fetch("/api/allocations/placement/order-ad-hoc", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKeyInput.value
+    },
+    body: JSON.stringify({ workspace_id: activeAllocationWorkspace })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allocationStatus.textContent = payload.detail || "Nie mozna zlecic rozstawienia Ad Hoc.";
+    allocationStatus.classList.add("error");
+    return;
+  }
+  allocationStatus.textContent = payload.message || "Zlecono rozstawienie Ad Hoc.";
   await loadAllocationWorkspaces();
 }
 

@@ -617,9 +617,10 @@ async function loadPlacementWorkspaces() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "picking-batch-button";
+    const modeLabel = workspace.mode === "ad_hoc" ? "Ad Hoc" : "Plan";
     button.innerHTML = `
       <strong>${escapeHtml(workspace.workspace_id)}</strong>
-      <span>${escapeHtml(workspace.name)} | ${workspace.progress_percent}% | ${workspace.placed_pallets}/${workspace.total_pallets} palet</span>
+      <span>${escapeHtml(workspace.name)} | ${modeLabel} | ${workspace.progress_percent}% | ${workspace.placed_pallets}/${workspace.total_pallets} palet</span>
     `;
     button.addEventListener("click", () => selectPlacementWorkspace(workspace));
     placementWorkspaceList.appendChild(button);
@@ -633,7 +634,9 @@ async function selectPlacementWorkspace(workspace) {
   placementWorkspaceChoice.classList.add("hidden");
   placementWork.classList.remove("hidden");
   placementWorkspaceTitle.textContent = `${workspace.workspace_id} | ${workspace.name}`;
-  placementInstruction.textContent = `Skanuj kod palety. Kod odstawienia: ${PLACEMENT_CONFIRM_CODE}.`;
+  placementInstruction.textContent = workspace.mode === "ad_hoc"
+    ? `Ad Hoc: skanuj palety wedlug wlasnej kolejnosci. Kod odstawienia: ${PLACEMENT_CONFIRM_CODE}.`
+    : `Skanuj kod palety. Kod odstawienia: ${PLACEMENT_CONFIRM_CODE}.`;
   clearResult(placementResult);
   await loadPlacementPallets();
 }
@@ -683,8 +686,9 @@ async function scanPlacementPallet(palletCode) {
   const position = result.payload.layout_position || "-";
   placementCurrent.classList.remove("hidden");
   placementPositionValue.textContent = position;
-  setResult(placementResult, `Paleta ${result.payload.pallet_code}: ustaw na Poz. ${position}.`, false);
-  setStatus(`Paleta ${result.payload.pallet_code}: Poz. ${position}. Po odstawieniu zeskanuj ${PLACEMENT_CONFIRM_CODE}.`, false);
+  const adHocText = selectedPlacementWorkspace?.mode === "ad_hoc" ? "Ad Hoc: " : "";
+  setResult(placementResult, `${adHocText}Paleta ${result.payload.pallet_code}: ustaw na Poz. ${position}.`, false);
+  setStatus(`${adHocText}Paleta ${result.payload.pallet_code}: Poz. ${position}. Po odstawieniu zeskanuj ${PLACEMENT_CONFIRM_CODE}.`, false);
 }
 
 async function completePlacementPallet() {
@@ -720,15 +724,27 @@ function upsertPlacementPallet(pallet) {
 
 function renderPlacementMap() {
   const activeCode = activePlacementPallet?.pallet_code || "";
-  const sorted = placementPallets.slice().sort((left, right) => comparePositionValues(left.layout_position, right.layout_position)
+  const isAdHoc = selectedPlacementWorkspace?.mode === "ad_hoc";
+  const activeSectionKey = activePlacementPallet ? placementSectionKey(activePlacementPallet) : "";
+  const visiblePallets = isAdHoc
+    ? placementPallets.filter((pallet) => pallet.layout_position || placementSectionKey(pallet) === activeSectionKey)
+    : placementPallets;
+  const sorted = visiblePallets.slice().sort((left, right) => comparePositionValues(left.layout_position, right.layout_position)
     || String(left.pallet_code || "").localeCompare(String(right.pallet_code || "")));
   if (!sorted.length) {
-    placementMap.innerHTML = "<div class=\"empty-batch\">Brak palet w zleceniu.</div>";
+    placementMap.innerHTML = isAdHoc
+      ? "<div class=\"empty-batch\">Mapa Ad Hoc jest pusta. Zeskanuj pierwsza palete.</div>"
+      : "<div class=\"empty-batch\">Brak palet w zleceniu.</div>";
     return;
   }
   const groups = new Map();
   for (const pallet of sorted) {
-    const position = pallet.layout_position || "-";
+    const position = isAdHoc
+      && !pallet.layout_position
+      && activePlacementPallet?.layout_position
+      && placementSectionKey(pallet) === activeSectionKey
+      ? activePlacementPallet.layout_position
+      : pallet.layout_position || "-";
     if (!groups.has(position)) {
       groups.set(position, []);
     }
@@ -749,15 +765,15 @@ function renderPlacementMap() {
     ].filter(Boolean).join(" / ");
     return `
       <div class="placement-map-cell placement-map-cell--prepak">
-          ${prepak.length ? prepak.map((pallet) => renderPlacementPalletCard(pallet, activeCode)).join("") : "<div class=\"placement-empty-slot\">brak</div>"}
-          ${other.length ? other.map((pallet) => renderPlacementPalletCard(pallet, activeCode)).join("") : ""}
+          ${prepak.length ? prepak.map((pallet) => renderPlacementPalletCard(pallet, activeCode, activeSectionKey, isAdHoc)).join("") : "<div class=\"placement-empty-slot\">brak</div>"}
+          ${other.length ? other.map((pallet) => renderPlacementPalletCard(pallet, activeCode, activeSectionKey, isAdHoc)).join("") : ""}
       </div>
       <div class="placement-map-cell placement-map-cell--aisle">
         <strong>Poz. ${escapeHtml(position)}</strong>
         <span>${escapeHtml(productLabel || "-")}</span>
       </div>
       <div class="placement-map-cell placement-map-cell--luz">
-          ${luz.length ? luz.map((pallet) => renderPlacementPalletCard(pallet, activeCode)).join("") : "<div class=\"placement-empty-slot\">brak</div>"}
+          ${luz.length ? luz.map((pallet) => renderPlacementPalletCard(pallet, activeCode, activeSectionKey, isAdHoc)).join("") : "<div class=\"placement-empty-slot\">brak</div>"}
       </div>
     `;
   }).join("")}
@@ -772,17 +788,22 @@ function renderPlacementMap() {
   });
 }
 
-function renderPlacementPalletCard(pallet, activeCode) {
+function renderPlacementPalletCard(pallet, activeCode, activeSectionKey = "", isAdHoc = false) {
     const isActive = pallet.pallet_code === activeCode;
     const isPlaced = pallet.placement_status === "odstawiona";
+    const isRelated = isAdHoc && !isActive && !isPlaced && placementSectionKey(pallet) === activeSectionKey;
     return `
-      <button class="placement-card ${isActive ? "active" : ""} ${isPlaced ? "placed" : ""}" type="button" data-pallet-code="${escapeHtml(pallet.pallet_code)}">
+      <button class="placement-card ${isActive ? "active" : ""} ${isPlaced ? "placed" : ""} ${isRelated ? "related" : ""}" type="button" data-pallet-code="${escapeHtml(pallet.pallet_code)}">
         <div class="placement-card__body">
           <strong>${escapeHtml(pallet.pallet_code)}</strong>
           <span>Poz. ${escapeHtml(pallet.layout_position || "-")}</span>
         </div>
       </button>
     `;
+}
+
+function placementSectionKey(pallet) {
+  return `${String(pallet.sku_list || "").trim()}|${String(pallet.color_list || "").trim()}`;
 }
 
 function showPlacementPalletLegend(pallet) {

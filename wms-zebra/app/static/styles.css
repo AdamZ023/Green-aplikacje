@@ -1162,6 +1162,23 @@ body.scanner-body {
   border-color: #2f3b48;
 }
 
+.placement-card.related {
+  border-color: #8b98a7 !important;
+  background: #e5e7eb;
+  color: #344054;
+  opacity: 1;
+}
+
+.placement-card.active {
+  border-color: #b27616 !important;
+  background: #fff1b8;
+}
+
+.placement-card.placed {
+  border-color: #1d4ed8 !important;
+  background: #dbeafe;
+}
+
 .placement-card__body {
   display: grid;
   gap: 1px;

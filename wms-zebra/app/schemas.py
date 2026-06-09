@@ -259,6 +259,7 @@ class AllocationPlacementWorkspaceOut(BaseModel):
     workspace_id: str
     name: str
     status: str
+    mode: str = "planned"
     total_pallets: int
     placed_pallets: int
     progress_percent: int

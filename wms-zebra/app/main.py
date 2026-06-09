@@ -1041,11 +1041,15 @@ def list_allocation_pallets(
     workspace_id: str = Query(min_length=1),
     db: Session = Depends(get_db),
 ) -> list[AllocationPalletOut]:
-    ensure_allocation_workspace(db, workspace_id)
+    workspace = ensure_allocation_workspace(db, workspace_id)
     plan_skus, plan_eans = get_allocation_plan_keys(db, workspace_id)
     imports_by_delivery = get_delivery_imports_by_id(db, workspace_id)
     contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
-    layout_by_pallet = build_allocation_layout(db, workspace_id, contents_by_pallet)
+    layout_by_pallet = (
+        {}
+        if allocation_placement_mode(workspace) == "ad_hoc"
+        else build_allocation_layout(db, workspace_id, contents_by_pallet)
+    )
     pallets = list(
         db.scalars(
             select(DeliveryPallet)
@@ -1120,6 +1124,47 @@ def order_allocation_placement(
     return AllocationActionOut(message=f"Zlecono rozstawienie: {workspace.workspace_id}. Palet: {len(pallets)}.")
 
 
+@app.post(
+    "/api/allocations/placement/order-ad-hoc",
+    response_model=AllocationActionOut,
+    dependencies=[Depends(require_api_key)],
+)
+def order_allocation_placement_ad_hoc(
+    payload: AllocationPlacementOrderRequest,
+    db: Session = Depends(get_db),
+) -> AllocationActionOut:
+    workspace = ensure_allocation_workspace(db, payload.workspace_id)
+    contents_by_pallet = get_allocation_contents_by_pallet(db, payload.workspace_id)
+    pallets = list(
+        db.scalars(
+            select(DeliveryPallet).where(
+                DeliveryPallet.workspace_id == payload.workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+            )
+        )
+    )
+    if not pallets:
+        raise HTTPException(status_code=400, detail="Brak aktywnych palet do rozstawienia Ad Hoc.")
+    for pallet in pallets:
+        contents = contents_by_pallet.get(pallet.pallet_code, [])
+        pallet.layout_row = allocation_layout_row([content.kind for content in contents])
+        pallet.layout_position = None
+        pallet.placement_status = "do_rozstawienia"
+        pallet.placed_at = None
+        pallet.placed_by = None
+        pallet.placed_scanner_id = None
+    workspace.status = "rozstawianie_ad_hoc"
+    add_allocation_event(
+        db,
+        payload.workspace_id,
+        "zlecenie_rozstawienia_ad_hoc",
+        f"Zlecono rozstawienie palet Ad Hoc: {workspace.name}.",
+        pallet_count=len(pallets),
+    )
+    db.commit()
+    return AllocationActionOut(message=f"Zlecono rozstawienie Ad Hoc: {workspace.workspace_id}. Palet: {len(pallets)}.")
+
+
 @app.get(
     "/api/allocations/placement/workspaces",
     response_model=list[AllocationPlacementWorkspaceOut],
@@ -1149,6 +1194,7 @@ def list_allocation_placement_workspaces(
                 workspace_id=workspace.workspace_id,
                 name=workspace.name,
                 status="rozstawiona" if placed >= len(pallets) else "w trakcie",
+                mode=allocation_placement_mode(workspace),
                 total_pallets=len(pallets),
                 placed_pallets=placed,
                 progress_percent=progress,
@@ -1166,9 +1212,13 @@ def list_allocation_placement_pallets(
     workspace_id: str = Query(min_length=1),
     db: Session = Depends(get_db),
 ) -> list[AllocationPlacementPalletOut]:
-    ensure_allocation_workspace(db, workspace_id)
+    workspace = ensure_allocation_workspace(db, workspace_id)
     contents_by_pallet = get_allocation_contents_by_pallet(db, workspace_id)
-    layout_by_pallet = build_allocation_layout(db, workspace_id, contents_by_pallet)
+    layout_by_pallet = (
+        {}
+        if allocation_placement_mode(workspace) == "ad_hoc"
+        else build_allocation_layout(db, workspace_id, contents_by_pallet)
+    )
     pallets = list(
         db.scalars(
             select(DeliveryPallet)
@@ -1196,10 +1246,17 @@ def scan_allocation_placement_pallet(
     payload: AllocationPlacementScanRequest,
     db: Session = Depends(get_db),
 ) -> AllocationPlacementPalletOut:
-    ensure_allocation_workspace(db, payload.workspace_id)
+    workspace = ensure_allocation_workspace(db, payload.workspace_id)
     pallet = get_placement_pallet_or_404(db, payload.workspace_id, payload.pallet_code)
     contents_by_pallet = get_allocation_contents_by_pallet(db, payload.workspace_id)
-    layout_by_pallet = build_allocation_layout(db, payload.workspace_id, contents_by_pallet)
+    if allocation_placement_mode(workspace) == "ad_hoc" and not pallet.layout_position:
+        assign_ad_hoc_layout_position(db, payload.workspace_id, pallet, contents_by_pallet)
+        db.flush()
+    layout_by_pallet = (
+        {}
+        if allocation_placement_mode(workspace) == "ad_hoc"
+        else build_allocation_layout(db, payload.workspace_id, contents_by_pallet)
+    )
     add_allocation_event(
         db,
         payload.workspace_id,
@@ -1222,7 +1279,7 @@ def complete_allocation_placement_pallet(
     payload: AllocationPlacementCompleteRequest,
     db: Session = Depends(get_db),
 ) -> AllocationPlacementPalletOut:
-    ensure_allocation_workspace(db, payload.workspace_id)
+    workspace = ensure_allocation_workspace(db, payload.workspace_id)
     pallet = get_placement_pallet_or_404(db, payload.workspace_id, payload.pallet_code)
     if pallet.placement_status == "odstawiona":
         raise HTTPException(status_code=409, detail="Ta paleta jest juz oznaczona jako odstawiona.")
@@ -1231,7 +1288,14 @@ def complete_allocation_placement_pallet(
     pallet.placed_by = payload.operator
     pallet.placed_scanner_id = payload.scanner_id
     contents_by_pallet = get_allocation_contents_by_pallet(db, payload.workspace_id)
-    layout_by_pallet = build_allocation_layout(db, payload.workspace_id, contents_by_pallet)
+    if allocation_placement_mode(workspace) == "ad_hoc" and not pallet.layout_position:
+        assign_ad_hoc_layout_position(db, payload.workspace_id, pallet, contents_by_pallet)
+        db.flush()
+    layout_by_pallet = (
+        {}
+        if allocation_placement_mode(workspace) == "ad_hoc"
+        else build_allocation_layout(db, payload.workspace_id, contents_by_pallet)
+    )
     add_allocation_event(
         db,
         payload.workspace_id,
@@ -1250,8 +1314,7 @@ def complete_allocation_placement_pallet(
         )
     )
     if not remaining:
-        workspace = ensure_allocation_workspace(db, payload.workspace_id)
-        workspace.status = "rozstawiona"
+        workspace.status = "rozstawiona_ad_hoc" if allocation_placement_mode(workspace) == "ad_hoc" else "rozstawiona"
     db.commit()
     return allocation_placement_pallet_out(pallet, contents_by_pallet.get(pallet.pallet_code, []), layout_by_pallet)
 
@@ -2061,6 +2124,10 @@ def allocation_workspace_out(db: Session, workspace: AllocationWorkspace) -> All
     )
 
 
+def allocation_placement_mode(workspace: AllocationWorkspace) -> str:
+    return "ad_hoc" if "ad_hoc" in (workspace.status or "") else "planned"
+
+
 def get_placement_pallet_or_404(db: Session, workspace_id: str, pallet_code: str) -> DeliveryPallet:
     normalized_code = pallet_code.strip().upper()
     pallet = db.scalar(
@@ -2074,6 +2141,73 @@ def get_placement_pallet_or_404(db: Session, workspace_id: str, pallet_code: str
     if not pallet:
         raise HTTPException(status_code=404, detail="Nie znaleziono palety w zleceniu rozstawiania.")
     return pallet
+
+
+def assign_ad_hoc_layout_position(
+    db: Session,
+    workspace_id: str,
+    pallet: DeliveryPallet,
+    contents_by_pallet: dict[str, list[DeliveryPalletContent]],
+) -> None:
+    contents = contents_by_pallet.get(pallet.pallet_code, [])
+    pallet.layout_row = pallet.layout_row or allocation_layout_row([content.kind for content in contents])
+    sku = dominant_value([content.sku for content in contents])
+    color = dominant_value([content.color for content in contents]) or None
+    if not sku:
+        raise HTTPException(status_code=400, detail="Nie mozna nadac pozycji Ad Hoc: paleta nie ma MDK.")
+
+    active_pallets = list(
+        db.scalars(
+            select(DeliveryPallet).where(
+                DeliveryPallet.workspace_id == workspace_id,
+                DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+                DeliveryPallet.placement_status.in_(("do_rozstawienia", "odstawiona")),
+            )
+        )
+    )
+    section_codes = {
+        code
+        for code, rows in contents_by_pallet.items()
+        if dominant_value([content.sku for content in rows]) == sku
+        and (dominant_value([content.color for content in rows]) or None) == color
+    }
+    section_pallets = [row for row in active_pallets if row.pallet_code in section_codes]
+    section_base = next(
+        (base_position(row.layout_position) for row in section_pallets if base_position(row.layout_position)),
+        "",
+    )
+    if not section_base:
+        section_base = str(next_free_base_position(active_pallets))
+
+    row_name = pallet.layout_row or "NIEOKRESLONE"
+    used_in_row = [
+        row
+        for row in section_pallets
+        if row.layout_position
+        and base_position(row.layout_position) == section_base
+        and (row.layout_row or "NIEOKRESLONE") == row_name
+        and row.pallet_code != pallet.pallet_code
+    ]
+    next_index = len(used_in_row) + 1
+    pallet.layout_position = section_base if next_index == 1 else f"{section_base}.{next_index}"
+
+
+def base_position(position: str | None) -> str:
+    value = str(position or "").strip()
+    return value.split(".", 1)[0] if value else ""
+
+
+def next_free_base_position(pallets: list[DeliveryPallet]) -> int:
+    used = {
+        int(base)
+        for row in pallets
+        for base in [base_position(row.layout_position)]
+        if base.isdigit()
+    }
+    candidate = 1
+    while candidate in used:
+        candidate += 1
+    return candidate
 
 
 def allocation_placement_pallet_out(
