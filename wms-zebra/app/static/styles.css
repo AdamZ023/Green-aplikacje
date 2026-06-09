@@ -536,6 +536,36 @@ button:disabled {
   line-height: 1.2;
 }
 
+#allocationDetails .table-wrap {
+  overflow-x: auto;
+}
+
+.allocation-pallet-table {
+  min-width: 1500px;
+  table-layout: fixed;
+}
+
+.allocation-pallet-table thead tr,
+.allocation-pallet-table tbody tr {
+  height: auto;
+}
+
+.allocation-pallet-table th,
+.allocation-pallet-table td {
+  padding: 6px 7px;
+  line-height: 1.15;
+  vertical-align: top;
+}
+
+.allocation-pallet-table th {
+  height: 34px;
+}
+
+.dashboard-view .allocation-pallet-table th,
+.dashboard-view .allocation-pallet-table td {
+  width: auto !important;
+}
+
 .dashboard-view th:nth-child(1),
 .dashboard-view td:nth-child(1) {
   width: 9%;
