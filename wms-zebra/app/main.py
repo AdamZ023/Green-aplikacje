@@ -2188,7 +2188,7 @@ def assign_ad_hoc_layout_position(
         and (row.layout_row or "NIEOKRESLONE") == row_name
         and row.pallet_code != pallet.pallet_code
     ]
-    next_index = len(used_in_row) + 1
+    next_index = next_free_section_suffix(section_base, used_in_row)
     pallet.layout_position = section_base if next_index == 1 else f"{section_base}.{next_index}"
 
 
@@ -2204,6 +2204,22 @@ def next_free_base_position(pallets: list[DeliveryPallet]) -> int:
         for base in [base_position(row.layout_position)]
         if base.isdigit()
     }
+    candidate = 1
+    while candidate in used:
+        candidate += 1
+    return candidate
+
+
+def next_free_section_suffix(base: str, pallets: list[DeliveryPallet]) -> int:
+    used = set()
+    for row in pallets:
+        position = str(row.layout_position or "").strip()
+        if not position or base_position(position) != base:
+            continue
+        parts = position.split(".", 1)
+        suffix = 1 if len(parts) == 1 else int(parts[1]) if parts[1].isdigit() else 0
+        if suffix > 0:
+            used.add(suffix)
     candidate = 1
     while candidate in used:
         candidate += 1

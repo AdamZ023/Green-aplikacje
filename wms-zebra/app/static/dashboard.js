@@ -675,7 +675,13 @@ function renderAllocationMap(pallets, contents = []) {
     return;
   }
 
-  const visiblePallets = pallets.filter((pallet) => !isRemovedAllocationPallet(pallet));
+  const visiblePallets = pallets.filter((pallet) => !isRemovedAllocationPallet(pallet) && String(pallet.layout_position || "").trim());
+  if (!visiblePallets.length) {
+    allocationMap.innerHTML = "<div class=\"empty-map\">Mapa Ad Hoc jest pusta. Pozycje pojawia sie po skanach palet na Zebrze.</div>";
+    allocationMapStatus.textContent = "";
+    allocationMapStatus.classList.remove("error");
+    return;
+  }
   const palletAlongRow = 0.8;
   const palletDepth = 1.2;
   const aisleWidth = clampNumber(Number(allocationAisleWidth.value || 4), 3, 5);
@@ -683,7 +689,7 @@ function renderAllocationMap(pallets, contents = []) {
   const luzMargin = Math.max(Number(allocationLuzMargin.value || 0), 0);
   const fieldLength = Number(allocationFieldLength.value || 0);
   const fieldWidth = Number(allocationFieldWidth.value || 0);
-  const sortedSlots = getAllocationSlots(pallets);
+  const sortedSlots = getAllocationSlots(visiblePallets);
   const allocationLength = sortedSlots.length * palletAlongRow;
   const allocationWidth = prepackMargin + palletDepth + aisleWidth + palletDepth + luzMargin;
   const drawingLength = Math.max(allocationLength, fieldLength || 0, 0.8);
