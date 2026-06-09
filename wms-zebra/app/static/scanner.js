@@ -683,6 +683,7 @@ async function scanPlacementPallet(palletCode) {
   activePlacementPallet = result.payload;
   upsertPlacementPallet(result.payload);
   renderPlacementMap();
+  scrollActivePlacementPalletIntoView();
   const position = result.payload.layout_position || "-";
   placementCurrent.classList.remove("hidden");
   placementPositionValue.textContent = position;
@@ -800,6 +801,18 @@ function renderPlacementPalletCard(pallet, activeCode, activeSectionKey = "", is
         </div>
       </button>
     `;
+}
+
+function scrollActivePlacementPalletIntoView() {
+  requestAnimationFrame(() => {
+    const activeCard = placementMap.querySelector(".placement-card.active");
+    if (!activeCard) return;
+    activeCard.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "center"
+    });
+  });
 }
 
 function placementSectionKey(pallet) {
