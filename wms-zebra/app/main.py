@@ -2164,6 +2164,14 @@ def get_placement_pallet_or_404(db: Session, workspace_id: str, pallet_code: str
             for candidate in candidates:
                 if canonical_pallet_scan_key(candidate.pallet_code) == scanned_key:
                     return candidate
+            scanned_pallet_no = str(scanned_key[1])
+            pallet_no_matches = [
+                candidate
+                for candidate in candidates
+                if str(candidate.pallet_no or "").strip().lstrip("0") == scanned_pallet_no
+            ]
+            if len(pallet_no_matches) == 1:
+                return pallet_no_matches[0]
         raise HTTPException(status_code=404, detail="Nie znaleziono palety w zleceniu rozstawiania.")
     return pallet
 
@@ -2439,6 +2447,13 @@ def split_codes(value: str | None) -> set[str]:
 
 
 def parse_delivery_ref(filename: str) -> str | None:
+    match = re.match(
+        r"^rozladunek_\d+CTN_([A-Za-z0-9]+)(?:_\d{8}_\d{6})?\.xlsx$",
+        filename,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return match.group(1)
     match = re.search(r"_(\d+)(?:\.[^.]+)?$", filename)
     return match.group(1) if match else None
 
