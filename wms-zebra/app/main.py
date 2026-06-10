@@ -2128,6 +2128,17 @@ def allocation_placement_mode(workspace: AllocationWorkspace) -> str:
     return "ad_hoc" if "ad_hoc" in (workspace.status or "") else "planned"
 
 
+def canonical_pallet_scan_key(value: str) -> tuple[str, int] | None:
+    normalized = str(value or "").strip().upper()
+    match = re.search(r"([A-Z0-9]+)-P([A-Z0-9]+)$", normalized)
+    if not match:
+        return None
+    delivery_ref, pallet_no = match.groups()
+    if not delivery_ref.isdigit() or not pallet_no.isdigit():
+        return None
+    return str(int(delivery_ref)), int(pallet_no)
+
+
 def get_placement_pallet_or_404(db: Session, workspace_id: str, pallet_code: str) -> DeliveryPallet:
     normalized_code = pallet_code.strip().upper()
     pallet = db.scalar(
@@ -2139,6 +2150,20 @@ def get_placement_pallet_or_404(db: Session, workspace_id: str, pallet_code: str
         )
     )
     if not pallet:
+        scanned_key = canonical_pallet_scan_key(normalized_code)
+        if scanned_key:
+            candidates = list(
+                db.scalars(
+                    select(DeliveryPallet).where(
+                        DeliveryPallet.workspace_id == workspace_id,
+                        DeliveryPallet.allocation_status != "usuniete_z_alokacji",
+                        DeliveryPallet.placement_status.in_(("do_rozstawienia", "odstawiona")),
+                    )
+                )
+            )
+            for candidate in candidates:
+                if canonical_pallet_scan_key(candidate.pallet_code) == scanned_key:
+                    return candidate
         raise HTTPException(status_code=404, detail="Nie znaleziono palety w zleceniu rozstawiania.")
     return pallet
 
