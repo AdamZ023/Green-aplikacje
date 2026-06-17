@@ -73,6 +73,18 @@
           "render();sync.applying=false;const importCount=Object.keys(state.trackingMap||{}).length;setStatus(IS_CLIENT&&importCount?'Baza pobrana':'Sesja zsynchronizowana',IS_CLIENT?'Pozycji importu: '+importCount+'. Można skanować.':'Skanów: '+state.scans.length,'ok')"
         );
         html = html.replace(
+          "render();sync.applying=false;setStatus('Sesja zsynchronizowana','Skanow: '+state.scans.length,'ok')",
+          "render();sync.applying=false;const importCount=Object.keys(state.trackingMap||{}).length;setStatus(IS_CLIENT&&importCount?'Baza pobrana':'CZEKAJ NA BAZĘ',IS_CLIENT?(importCount?'Pozycji importu: '+importCount+'. Można skanować.':'Baza z komputera nie została jeszcze pobrana. Nie skanuj etykiet.'):'Skanow: '+state.scans.length,IS_CLIENT&&importCount?'ok':'warn')"
+        );
+        html = html.replace(
+          "const link=location.origin+location.pathname+'?join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(link);qr.hidden=false;",
+          "const link='https://adamz023.github.io/Green-aplikacje/skaner-dpd-v11.html?v=20260617-2&join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent(link);qr.hidden=false;"
+        );
+        html = html.replace(
+          "render();autoJoin();scanInput.focus();",
+          "render();if(IS_CLIENT)setStatus('CZEKAJ NA BAZĘ','Łączenie z komputerem. Nie skanuj etykiet, dopóki nie pojawi się zielony komunikat Baza pobrana.','warn');autoJoin();scanInput.focus();"
+        );
+        html = html.replace(
           "function startSession(){if(!window.Peer){setSession('Brak biblioteki online','bad');return}closeSession();const code=Math.random().toString(36).slice(2,8).toUpperCase();",
           "function startSession(){const vals=Object.values(state.trackingMap).map(normalizeEntry),ecomm=vals.filter(v=>v.isEcomm).length;if(!vals.length||!ecomm){setStatus('Najpierw zapisz prawidłowy import','Sesji dla Zebry nie można utworzyć bez importu z pozycjami Ecomm.','bad');const h=document.getElementById('syncHealth');if(h)h.textContent='QR zablokowany: najpierw zapisz prawidłowy import z pozycjami Ecomm.';return}if(!window.Peer){setSession('Brak biblioteki online','bad');return}closeSession();const code=Math.random().toString(36).slice(2,8).toUpperCase();"
         );
