@@ -74,11 +74,11 @@
         );
         html = html.replace(
           "render();sync.applying=false;setStatus('Sesja zsynchronizowana','Skanow: '+state.scans.length,'ok')",
-          "render();sync.applying=false;const importCount=Object.keys(state.trackingMap||{}).length;setStatus(IS_CLIENT&&importCount?'Baza pobrana':'CZEKAJ NA BAZĘ',IS_CLIENT?(importCount?'Pozycji importu: '+importCount+'. Można skanować.':'Baza z komputera nie została jeszcze pobrana. Nie skanuj etykiet.'):'Skanow: '+state.scans.length,IS_CLIENT&&importCount?'ok':'warn')"
+          "render();sync.applying=false;const importCount=Object.keys(state.trackingMap||{}).length;setStatus(IS_CLIENT?(importCount?'Baza pobrana':'CZEKAJ NA BAZĘ'):'Sesja zsynchronizowana',IS_CLIENT?(importCount?'Pozycji importu: '+importCount+'. Można skanować.':'Baza z komputera nie została jeszcze pobrana. Nie skanuj etykiet.'):'Skanow: '+state.scans.length,IS_CLIENT&&!importCount?'warn':'ok')"
         );
         html = html.replace(
           "const link=location.origin+location.pathname+'?join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(link);qr.hidden=false;",
-          "const link='https://adamz023.github.io/Green-aplikacje/skaner-dpd-v11.html?v=20260617-3&join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent(link);qr.hidden=false;"
+          "const link='https://adamz023.github.io/Green-aplikacje/skaner-dpd-v11.html?v=20260617-4&join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent(link);qr.hidden=false;"
         );
         html = html.replace(
           "render();autoJoin();scanInput.focus();",
@@ -94,7 +94,7 @@
         );
         html = html.replace(
           "sync.conn.on('open',()=>{setSession('Polaczono z sesja '+code,'ok');sync.conn.send({type:'state',payload:payload()})})",
-          "sync.conn.on('open',()=>{setSession('Połączono z sesją '+code,'ok');setStatus('Pobieram bazę z komputera','Nie skanuj jeszcze. Czekam na synchronizację importu i skanów.','warn');sync.conn.send({type:'request-state'})})"
+          "sync.conn.on('open',()=>{setSession('Połączono z sesją '+code,'ok');setStatus('Pobieram bazę z komputera','Nie skanuj jeszcze. Czekam na synchronizację importu i skanów.','warn');let asks=0;const askState=()=>{if(sync.conn&&sync.conn.open&&(!state.trackingMap||!Object.keys(state.trackingMap).length)){sync.conn.send({type:'request-state'});asks++;if(asks===4)setStatus('NADAL CZEKAM NA BAZĘ','Połączenie otwarte, ale komputer nie odesłał bazy. Sprawdź, czy na komputerze widać: Zebra połączona.','warn')}};askState();setTimeout(askState,800);setTimeout(askState,2000);setTimeout(askState,5000);setTimeout(()=>{if(!state.trackingMap||!Object.keys(state.trackingMap).length)setStatus('BRAK BAZY Z KOMPUTERA','Zamknij tę kartę, utwórz nową sesję na komputerze i zeskanuj nowy QR. Jeśli problem wraca tylko na tym skanerze, Chrome/WebRTC na tym urządzeniu blokuje połączenie.','bad')},12000)})"
         );
         html = html.replace(
           "sync.peer.on('connection',conn=>{sync.clients.push(conn);wire(conn);conn.on('open',()=>{conn.send({type:'state',payload:payload()});setSession('Zebra polaczona. Sesja: '+code,'ok')})});",
