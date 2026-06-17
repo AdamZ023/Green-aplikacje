@@ -78,7 +78,7 @@
         );
         html = html.replace(
           "const link=location.origin+location.pathname+'?join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(link);qr.hidden=false;",
-          "const link='https://adamz023.github.io/Green-aplikacje/skaner-dpd-v11.html?v=20260617-2&join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent(link);qr.hidden=false;"
+          "const link='https://adamz023.github.io/Green-aplikacje/skaner-dpd-v11.html?v=20260617-3&join='+encodeURIComponent(code);sessionLink.textContent=link;qr.src='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent(link);qr.hidden=false;"
         );
         html = html.replace(
           "render();autoJoin();scanInput.focus();",
@@ -94,7 +94,15 @@
         );
         html = html.replace(
           "sync.conn.on('open',()=>{setSession('Polaczono z sesja '+code,'ok');sync.conn.send({type:'state',payload:payload()})})",
-          "sync.conn.on('open',()=>{setSession('Połączono z sesją '+code,'ok');setStatus('Pobieram bazę z komputera','Nie skanuj jeszcze. Czekam na synchronizację importu i skanów.','warn')})"
+          "sync.conn.on('open',()=>{setSession('Połączono z sesją '+code,'ok');setStatus('Pobieram bazę z komputera','Nie skanuj jeszcze. Czekam na synchronizację importu i skanów.','warn');sync.conn.send({type:'request-state'})})"
+        );
+        html = html.replace(
+          "sync.peer.on('connection',conn=>{sync.clients.push(conn);wire(conn);conn.on('open',()=>{conn.send({type:'state',payload:payload()});setSession('Zebra polaczona. Sesja: '+code,'ok')})});",
+          "sync.peer.on('connection',conn=>{sync.clients.push(conn);wire(conn);const sendInitial=()=>{if(!conn.open)return;conn.send({type:'state',payload:payload()});setSession('Zebra połączona. Sesja: '+code,'ok')};conn.on('open',sendInitial);setTimeout(sendInitial,300);setTimeout(sendInitial,1200);setTimeout(sendInitial,2500)});"
+        );
+        html = html.replace(
+          "function wire(conn){conn.on('data',msg=>{if(!msg||msg.type!=='state')return;applyRemote(msg.payload)});conn.on('close',()=>setSession('Polaczenie zamkniete','warn'));conn.on('error',()=>setSession('Blad polaczenia','bad'))}",
+          "function wire(conn){conn.on('data',msg=>{if(!msg)return;if(msg.type==='request-state'&&sync.role==='host'&&conn.open){conn.send({type:'state',payload:payload()});setSession('Zebra połączona. Sesja: '+sessionCode.value,'ok');return}if(msg.type!=='state')return;applyRemote(msg.payload)});conn.on('close',()=>{setSession('Połączenie zamknięte','warn');if(IS_CLIENT)setStatus('POŁĄCZENIE PRZERWANE','Zeskanuj nowy QR albo utwórz sesję ponownie.','bad')});conn.on('error',()=>{setSession('Błąd połączenia','bad');if(IS_CLIENT)setStatus('BŁĄD POŁĄCZENIA','Zebra nie może połączyć się z komputerem. Utwórz nową sesję i zeskanuj nowy QR.','bad')})}"
         );
         html = html.replace('</body>', '<script>(function(){function closest(el,sel){while(el&&el.nodeType===1){if(el.matches(sel))return el;el=el.parentElement}return null}var panel=document.querySelector("section.panel");var workflow=document.querySelector(".workflow");var importBox=closest(document.getElementById("mappingInput"),"div.config");var session=document.querySelector(".session");var operatorRow=closest(document.getElementById("operator"),".row");var scanBox=closest(document.getElementById("scanInput"),"div");if(scanBox)scanBox.classList.add("scan-step");if(panel&&workflow&&importBox)panel.insertBefore(importBox,workflow.nextSibling);if(panel&&importBox&&operatorRow)panel.insertBefore(operatorRow,importBox.nextSibling);if(panel&&operatorRow&&session)panel.insertBefore(session,operatorRow.nextSibling);if(panel&&session&&scanBox)panel.insertBefore(scanBox,session.nextSibling);if(importBox&&!importBox.querySelector(".import-limit")){var label=importBox.querySelector("label");if(label){var head=document.createElement("div");head.className="import-head";var limit=document.createElement("span");limit.className="import-limit";limit.textContent="zalecane do 1000 | max 2000 pozycji";label.parentNode.insertBefore(head,label);head.appendChild(label);head.appendChild(limit)}}var scanLabel=document.querySelector("label[for=scanInput]");if(scanLabel)scanLabel.textContent="Krok 4: Skanowanie";var opLabel=document.querySelector("label[for=operator]");if(opLabel)opLabel.textContent="Krok 2: Operator [opcjonalnie]";var mode=document.querySelector(".row.config input[disabled]");if(mode){mode.value="Ecomm: 1101H/9101H";mode.title=mode.value}var sessionLabel=document.querySelector("label[for=sessionCode]");if(sessionLabel)sessionLabel.textContent="Krok 3: Sesja dla Zebry";})();<\/script></body>');
         document.open();
